@@ -1,12 +1,3 @@
-def all_mags(wildcards):
-    mag_folder = "{path}/{name}/{assembler}/MAGs/".format(path = wildcards.path, name=wildcards.name, assembler = wildcards.assembler)
-    name = wildcards.name
-    bins = [f.split("-")[-1][:-3] for f in os.listdir(mag_folder) if f.endswith(".fa")]
-    results = [mag_folder + "metabat_{name}_{bin}/{name}_{bin}.faa".format(name=name, bin = f)  for f in bins]
-
-    return results
-
-
 rule phylophlan :
     params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
              phylophlan_exe = "phylophlan.py",
@@ -31,30 +22,38 @@ rule phylophlan :
     cp output/{wildcards.type}{wildcards.name}/{wildcards.type}{wildcards.name}.tree.int.nwk $DD/{output}
     """
 
-rule annotate_single_mag :
-    input : "{path}/{name}/{assembler}/MAGs/metabat_{name}-{bin_id}.fa"
-    output : gff = "{path}/{name}/{assembler}/MAGs/metabat_{name}_{bin_id}/{name}_{bin_id}.faa",
-             checkm_file = "{path}/{name}/{assembler}/MAGs/metabat_{name}_{bin_id}/{name}_{bin_id}.checkm"
-    threads : 4
+
+rule annotate_all_mags :
+    input : "{path}/{name}/{assembler}/MAGs/metabat_{name}-unbinned.fa"
+    output : "{path}/{name}/{assembler}/MAGs/metabat_{name}_unbinned/{name}_unbinned.checkm"
+    threads : THREADS
     shell : """
 
-    bin_id='{wildcards.bin_id}'
+    input_dir=`dirname {input}`
 
-    out_dir=`dirname {output.gff}`
-    if [ $bin_id = 'unbinned' ]
-    then
-        prokka --outdir /scratch/{wildcards.name}_{wildcards.bin_id}/  --metagenome --force --prefix {wildcards.name}_{wildcards.bin_id} --locustag {wildcards.name}_{wildcards.bin_id} --cpus {threads} {input}
-        mv /scratch/{wildcards.name}_{wildcards.bin_id}/* $out_dir/
+    for b in `ls $input_dir/*.fa`
+    do
+        bin_id=`basename $b | sed "s#metabat_{wildcards.name}-\\(.*\\).fa#\\1#"`
+        out_dir=$input_dir/metabat_{wildcards.name}_$bin_id
 
-    else
-        prokka --outdir /scratch/{wildcards.name}_{wildcards.bin_id}/   --force --prefix {wildcards.name}_{wildcards.bin_id} --locustag {wildcards.name}_{wildcards.bin_id} --cpus {threads} {input}
-        mv /scratch/{wildcards.name}_{wildcards.bin_id}/* $out_dir/
+        mkdir -p $out_dir
 
-        checkm lineage_wf -t {threads} -x fna $out_dir $out_dir/data > {output.checkm_file}
-        rm -r $out_dir/data
-    fi
+        if [ $bin_id = 'unbinned' ]
+        then
+            prokka --outdir /scratch/{wildcards.name}_$bin_id/  --metagenome --force --prefix {wildcards.name}_$bin_id --locustag {wildcards.name}_$bin_id --cpus {threads} $b
+            mv /scratch/{wildcards.name}_$bin_id/* $out_dir/
+            touch $out_dir/{wildcards.name}_$bin_id.checkm
+        else
+            prokka --outdir /scratch/{wildcards.name}_$bin_id/  --force --prefix {wildcards.name}_$bin_id --locustag {wildcards.name}_$bin_id --cpus {threads} $b
+            mv /scratch/{wildcards.name}_$bin_id/* $out_dir/
 
+            checkm lineage_wf -t {threads} -x fna $out_dir $out_dir/data > $out_dir/{wildcards.name}_$bin_id.checkm
+            rm -r $out_dir/data
+        fi
+    done
     """
+
+
 
 rule filter_good_MAGs :
 # cutoff based on https://www.microbe.net/2017/12/13/why-genome-completeness-and-contamination-estimates-are-more-complicated-than-you-think/
@@ -80,10 +79,8 @@ rule filter_good_MAGs :
 
 
 
-
 rule MAG_stats:
-    input : bin_file = "{path}/{name}/{assembler}/MAGs/metabat_{name}-unbinned.fa",
-            mag_list = all_mags
+    input : bin_file = "{path}/{name}/{assembler}/MAGs/metabat_{name}_unbinned/{name}_unbinned.checkm",
     output : "{path}/{name}/{assembler}/MAGs/{name}.magstats"
     threads : 1
     run :
@@ -92,8 +89,10 @@ rule MAG_stats:
         from pandas import DataFrame
 
         out_dict = {}
-        mag_folder = "/".join(input.bin_file.split("/")[:-1])
-        bin_files = input.mag_list
+        mag_folder = "/".join(input.bin_file.split("/")[:-2])
+        mag_folder = "{path}/{name}/{assembler}/MAGs/".format(path = wildcards.path, name=wildcards.name, assembler = wildcards.assembler)
+        bins = [f.split("-")[-1][:-3] for f in os.listdir(mag_folder) if f.endswith(".fa")]
+        bin_files = [mag_folder + "metabat_{name}_{bin}/{name}_{bin}.checkm".format(name=wildcards.name, bin = f)  for f in bins]
 
         out_file = output[0]
 
@@ -101,7 +100,7 @@ rule MAG_stats:
 #            tax = [l.split()[:2] for l in handle.readlines()]
 #            tax = {t[0] : ":".join([tt for tt in t[1].split(".") if "?" not in tt ]) for t in tax if "all_samples-" in t[0]}
         def process_bin(binl) :
-            bin_head = binl[:-4]
+            bin_head = binl[:-7]
             bin_checkm = bin_head + ".checkm"
             bin_genome= bin_head + ".fna"
             bin_proteom = bin_head + ".faa"
