@@ -96,6 +96,8 @@ rule hammer :
     input : proteom = "{path}/{gtdb_id}/proteom.faa"
     output : pfams = "{path}/{gtdb_id}/pfams.json", raw_out = "{path}/{gtdb_id}/raw_pfams.tblout"
     run :
+        import pandas
+
         call("hmmsearch --noali --tblout {raw_out}  {db} {input}  > /dev/null".format(raw_out = output.raw_out, db = config['gtdb']['hmmer']['pfams_db'], input = input.proteom), shell = True)
         domtblout_head = ["target_name" , "target_accession" , "query_name" , "query_accession" , "E-value","score-sequence" , "bias-sequence" , "bdE-value","score-best-domain" , "bias--best-domain" , "exp" , "reg" , "clu" , "ov" , "env" , "dom" , "rep" , "inc" , "description_of_target"]
         data = pandas.read_csv(output.raw_out, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,18))
