@@ -29,7 +29,7 @@ rule trimmomatic:
     """ QCing and cleaning reads """
     params : java_cmd = config['trimmomatic']['java_cmd'],
              jar_file = config['trimmomatic']['jar_file'],
-             mem = config['trimmomatic']['java_vm_mem']
+             mem = config['trimmomatic']['java_vm_mem'],
              options = config['trimmomatic']['options'],
              processing_options = config['trimmomatic']['processing_options'],
              temp_folder = config['general']['temp_dir']
