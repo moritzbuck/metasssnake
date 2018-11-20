@@ -37,8 +37,10 @@
     "download" : {
       "remote" : "https://data.ace.uq.edu.au/public/gtdb/release86/bac_metadata_r86.tsv",
       "local" : "/home/moritzbuck/data/bac_metadata_r86.tsv",
-      "ncbi_remote" : "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt",
-      "ncbi_local" : "/home/moritzbuck/data/assembly_summary.txt",
+      "genbank_remote" : "ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt",
+      "refseq_remote" :"ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt",
+      "genbank_local" : "/home/moritzbuck/data/assembly_summary_genbank.txt",
+      "refseq_local" : "/home/moritzbuck/data/assembly_summary_refseq.txt",
       "retries" : 5
     },
     "hmmer" : {
