@@ -27,12 +27,12 @@ temp_dir = os.environ['SNIC_TMP']
 
 rule trimmomatic:
     """ QCing and cleaning reads """
-    params : java_cmd = config['trimmomatic']['java_cmd'],
-             jar_file = config['trimmomatic']['jar_file'],
-             mem = config['trimmomatic']['java_vm_mem'],
-             options = config['trimmomatic']['options'],
-             processing_options = config['trimmomatic']['processing_options'],
-             temp_folder = config['general']['temp_dir']
+    params : java_cmd = config["read_processing"]['trimmomatic']['java_cmd'],
+             jar_file = config["read_processing"]['trimmomatic']['jar_file'],
+             mem = config["read_processing"]['trimmomatic']['java_vm_mem'],
+             options = config["read_processing"]['trimmomatic']['options'],
+             processing_options = config["read_processing"]['trimmomatic']['processing_options'],
+             temp_folder = config["read_processing"]['general']['temp_dir']
     input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
              rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
     output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
@@ -50,8 +50,8 @@ rule trimmomatic:
         """
 
 # rule mash:
-#     params : kmer = config['mash']['kmer'],
-#              hashes = config['mash']['hashes'],
+#     params : kmer = config["read_processing"]['mash']['kmer'],
+#              hashes = config["read_processing"]['mash']['hashes'],
 #     input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
 #     output : "1000_processed_reads/{sample}/reads/mash/{sample}.msh"
 #     log : "1000_processed_reads/{sample}/reads/mash/{sample}.log"
@@ -60,9 +60,9 @@ rule trimmomatic:
 #         "mash sketch -r -p {threads} -k {params.kmer} -s {params.hashes} -o $(echo '{output}' | sed -e 's/.msh//') {input} > {log}"
 #
 # rule kaiju:
-#     params : db_path = config['kaiju']['db_path'],
-#              db = config['kaiju']['db'],
-#              db = config['kaiju']['uppmax']
+#     params : db_path = config["read_processing"]['kaiju']['db_path'],
+#              db = config["read_processing"]['kaiju']['db'],
+#              db = config["read_processing"]['kaiju']['uppmax']
 #     input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
 #     output : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.out.summary", "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.html"
 #     log : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.log"
@@ -77,9 +77,9 @@ rule trimmomatic:
 #     """
 #
 # rule matam:
-#     params : db_path = config['matam']['db_path'],
+#     params : db_path = config["read_processing"]['matam']['db_path'],
 #              temp_dir = config['temp_dir'],
-#              max_mem = config['matam']['max_mem']
+#              max_mem = config["read_processing"]['matam']['max_mem']
 #     threads : config['threads']
 #     input :  fwd = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz",
 #              rev = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
