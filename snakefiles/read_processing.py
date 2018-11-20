@@ -45,8 +45,7 @@ rule trimmomatic:
         unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
         unpigz -c {input.rev} >  {params.temp_folder}/temp_R2.fastq
 
-        {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder}
--jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
+        {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
         """
 
 # rule mash:
