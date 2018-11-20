@@ -32,7 +32,7 @@ rule trimmomatic:
              mem = config["read_processing"]['trimmomatic']['java_vm_mem'],
              options = config["read_processing"]['trimmomatic']['options'],
              processing_options = config["read_processing"]['trimmomatic']['processing_options'],
-             temp_folder = config["read_processing"]['general']['temp_dir']
+             temp_folder = temp_dir 
     input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
              rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
     output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
