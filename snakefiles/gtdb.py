@@ -3,12 +3,15 @@ from os.path import join as pjoin
 import os
 import shutil
 
-metasssnake_path = "/home/moritzbuck/repos/moritz/metasssnake/"
+metasssnake_path = pjoin(os.environ['HOME'], "repos/moritz/metasssnake/")
 configfile : pjoin(metasssnake_path, "snakefiles" , "params.json")
 
-
 rule download:
-    output : gbk = "{path}/{gtdb_id}/genome.gbk", cdss = "{path}/{gtdb_id}/cdss.fna", genome = "{path}/{gtdb_id}/genome.fna", proteom = "{path}/{gtdb_id}/proteom.faa", metadata = "{path}/{gtdb_id}/metadata.json"
+    output : gbk = "{path}/{gtdb_id}/genome.gbk",
+             cdss = "{path}/{gtdb_id}/cdss.fna",
+             genome = "{path}/{gtdb_id}/genome.fna",
+             proteom = "{path}/{gtdb_id}/proteom.faa",
+             metadata = "{path}/{gtdb_id}/metadata.json"
     params : temp_folder = pjoin(config['general']['temp_dir'], "{gtdb_id}")
     threads : 1
     run :
@@ -70,22 +73,37 @@ rule download:
         genomics = genomics[0]
 
         proteomics = [f for f in all_files if f.endswith("_protein.faa.gz")]
-        assert len(proteomics) == 1, "More/less than one proteins seq file?"
-        proteomics = proteomics[0]
+        if len(proteomics) == 0 :
+            call("unpigz " + pjoin(dl_folder, genomics), shell=True)
 
-        gbks = [f for f in all_files if f.endswith("_genomic.gbff.gz")]
-        assert len(gbks) == 1, "More/less than one gneomics file?"
-        gbks = gbks[0]
+            exe_str = "prokka --outdir {out_dir}  --force --prefix {prefix} --locustag {prefix} --cpus {threads} {infile}"
+            call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, genomics[:-3])), shell = True)
+            genomics =  wildcards.gtdb_id + ".fna"
+            proteomics =  wildcards.gtdb_id + ".faa"
+            gbks =  wildcards.gtdb_id + ".gbk"
+            cdss =  wildcards.gtdb_id + ".ffn"
 
-        cdss = [f for f in all_files if f.endswith("_cds_from_genomic.fna.gz")]
-        assert len(cdss) == 1, "More/less than one gneomics file?"
-        cdss = cdss[0]
+            shutil.copy(pjoin(dl_folder, genomics), output.genome)
+            shutil.copy(pjoin(dl_folder, proteomics), output.proteome)
+            shutil.copy(pjoin(dl_folder, gbks), output.gbk)
+            shutil.copy(pjoin(dl_folder, cdss), output.cdss)
+        else :
+            assert len(proteomics) == 1, "More/less than one proteins seq file?"
+            proteomics = proteomics[0]
 
-        umzip = "unpigz -c {file} > {outfile}"
-        call( umzip.format(file = pjoin(dl_folder, genomics), outfile = output.genome), shell=True)
-        call( umzip.format(file = pjoin(dl_folder, proteomics), outfile = output.proteom), shell=True)
-        call( umzip.format(file = pjoin(dl_folder, gbks), outfile = output.gbk), shell=True)
-        call( umzip.format(file = pjoin(dl_folder, cdss), outfile = output.cdss), shell=True)
+            gbks = [f for f in all_files if f.endswith("_genomic.gbff.gz")]
+            assert len(gbks) == 1, "More/less than one gneomics file?"
+            gbks = gbks[0]
+
+            cdss = [f for f in all_files if f.endswith("_cds_from_genomic.fna.gz")]
+            assert len(cdss) == 1, "More/less than one gneomics file?"
+            cdss = cdss[0]
+
+            umzip = "unpigz -c {file} > {outfile}"
+            call( umzip.format(file = pjoin(dl_folder, genomics), outfile = output.genome), shell=True)
+            call( umzip.format(file = pjoin(dl_folder, proteomics), outfile = output.proteom), shell=True)
+            call( umzip.format(file = pjoin(dl_folder, gbks), outfile = output.gbk), shell=True)
+            call( umzip.format(file = pjoin(dl_folder, cdss), outfile = output.cdss), shell=True)
 
         metadata['genome'] = output.genome
         metadata['proteome'] = output.proteom
