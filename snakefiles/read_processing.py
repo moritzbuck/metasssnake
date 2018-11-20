@@ -33,21 +33,20 @@ rule trimmomatic:
              options = config['trimmomatic']['options'],
              processing_options = config['trimmomatic']['processing_options'],
              temp_folder = config['general']['temp_dir']
-    input :  find_fastq
-    output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz",
-             read2 = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz",
-             read1U = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1U.fastq.gz",
-             read2U = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2U.fastq.gz",
-    threads : config['general']['threads']
-    log : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}.log"
+    input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
+             rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
+    output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
+             read2 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/rev_paired.fastq.gz",
+             read1U = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_unpaired.fastq.gz",
+             read2U = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/rev_unpaired.fastq.gz",
+    log : "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/log"
     shell:
         """
-        unpigz -c `echo {input} | tr ' ' '\n' | grep "_R1_"`  >  {params.temp_folder}/temp_R1.fastq
-        unpigz -c `echo {input} | tr ' ' '\n' | grep "_R2_"` >  {params.temp_folder}/temp_R2.fastq
+        unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
+        unpigz -c {input.rev} >  {params.temp_folder}/temp_R2.fastq
 
         {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder}
--jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} -baseout {params.temp_folder}/{wildcards.sample}.fastq.gz {params.processing_options} 2> {log}
-        mv {params.temp_folder}/{wildcards.sample}*.fastq.gz 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/
+-jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
         """
 
 rule mash:
