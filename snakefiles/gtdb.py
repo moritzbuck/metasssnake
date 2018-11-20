@@ -37,9 +37,12 @@ rule download:
                 call("wget " + config['gtdb']['download']['genbank_remote'] + " -O " + config['gtdb']['download']['genbank_local'], shell=True)
 
             metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
-            ncbi_id = metadata['ncbi_genbank_assembly_accession']
+            ncbi_id = metadata['ncbi_genbank_assembly_accession'].split(".")[0]
             refseq = pandas.read_table(config['gtdb']['download']['refseq_local'], skiprows=1, index_col='gbrs_paired_asm', low_memory=False)
             genbank = pandas.read_table(config['gtdb']['download']['genbank_local'], skiprows=1, index_col=0, low_memory=False)
+            genbank.index = [t.split(".")[0] for t in genbank.index]
+            refseq.index = [t.split(".")[0] for t in refseq.index]
+
             if ncbi_id in refseq.index:
                 ncbi_data = refseq.loc[ncbi_id].to_dict()
             else :
@@ -84,7 +87,7 @@ rule download:
             cdss =  wildcards.gtdb_id + ".ffn"
 
             shutil.copy(pjoin(dl_folder, genomics), output.genome)
-            shutil.copy(pjoin(dl_folder, proteomics), output.proteome)
+            shutil.copy(pjoin(dl_folder, proteomics), output.proteom)
             shutil.copy(pjoin(dl_folder, gbks), output.gbk)
             shutil.copy(pjoin(dl_folder, cdss), output.cdss)
         else :
