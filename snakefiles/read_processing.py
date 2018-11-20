@@ -69,11 +69,11 @@ rule merge_libs:
         if not os.path.exists(out_fold):
             os.makedirs(out_fold)
         unzip_cmd = "unpigz -c -p {threads} {files} > {temp_fold}"
-        run(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "fwd.fastq")))
-        run(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "rev.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "rev.fastq")))
-        run(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd_unpaired.fastq.gz" ) for d in dirs] + [pjoin(d, "rev_unpaired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "unp.fastq")))
-        run("pigz -p {threads} {temp_fold}/*.fastq".format(temp_fold = out_fold, threads = threads))
-        run("mv {temp_fold}/*.gz {outdir}/".format(outdir = os.path.dirname(outpud.read1), threads = threads))
+        call(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd_paired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "fwd.fastq")), shell = True)
+        call(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "rev_paired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "rev.fastq")), shell = True)
+        call(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd_unpaired.fastq.gz" ) for d in dirs] + [pjoin(d, "rev_unpaired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "unp.fastq")), shell = True)
+        call("pigz -p {threads} {temp_fold}/*.fastq".format(temp_fold = out_fold, threads = threads), shell = True)
+        call("mv {temp_fold}/*.gz {outdir}/".format(outdir = os.path.dirname(outpud.read1), threads = threads), shell = True)
 
 
 # rule mash:
