@@ -51,10 +51,11 @@ rule trimmomatic:
     log : "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/log"
     shell:
         """
-        unpigz -c -p {threads} {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
-        unpigz -c -p {threads} {input.rev} >  {params.temp_folder}/temp_R2.fastq
+        mkdirs -p {params.temp_folder}/{sample}_{lib}/
+        unpigz -c -p {threads} {input.fwd}  >  {params.temp_folder}/{sample}_{lib}/temp_R1.fastq
+        unpigz -c -p {threads} {input.rev} >  {params.temp_folder}/{sample}_{lib}/temp_R2.fastq
 
-        {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
+        {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/{sample}_{lib}/temp_R1.fastq {params.temp_folder}/{sample}_{lib}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
         """
 
 rule merge_libs:
@@ -76,32 +77,32 @@ rule merge_libs:
         call("mv {temp_fold}/*.gz {outdir}/".format(outdir = os.path.dirname(outpud.read1), threads = threads), shell = True)
 
 
-# rule mash:
-#     params : kmer = config["read_processing"]['mash']['kmer'],
-#              hashes = config["read_processing"]['mash']['hashes'],
-#     input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
-#     output : "1000_processed_reads/{sample}/reads/mash/{sample}.msh"
-#     log : "1000_processed_reads/{sample}/reads/mash/{sample}.log"
-#     threads : config['threads']
-#     shell :
-#         "mash sketch -r -p {threads} -k {params.kmer} -s {params.hashes} -o $(echo '{output}' | sed -e 's/.msh//') {input} > {log}"
-#
-# rule kaiju:
-#     params : db_path = config["read_processing"]['kaiju']['db_path'],
-#              db = config["read_processing"]['kaiju']['db'],
-#              db = config["read_processing"]['kaiju']['uppmax']
-#     input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
-#     output : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.out.summary", "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.html"
-#     log : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.log"
-#     threads : config['threads']
-#     shell : """
-#     module load bioinfo-tools
-#     module load Krona
-#     kaiju -t {params.db_path}/nodes.dmp -f {params.db_path}/{params.db}   -i 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/{wildcards.sample}_1P.fastq.gz -j 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/{wildcards.sample}_2P.fastq.gz -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -z {threads} > {log}
-#     kaiju2krona -u -t {params.db_path}/nodes.dmp -n {params.db_path}/names.dmp -i 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.krona >> {log}
-#     ktImportText  -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.html 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.krona >> {log}
-#     kaijuReport -p -r genus -t {params.db_path}/nodes.dmp -n {params.db_path}/names.dmp -i 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -r family -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.summary >> {log}
-#     """
+rule mash:
+    params : kmer = config["read_processing"]['mash']['kmer'],
+             hashes = config["read_processing"]['mash']['hashes']
+    input : "1000_processed_reads/{sample}/reads/fwd.fastq.gz","1000_processed_reads/{sample}/reads/rev_2P.fastq.gz"
+    output : "1000_processed_reads/{sample}/reads/mash/{sample}.msh"
+    log : "1000_processed_reads/{sample}/reads/mash/{sample}.log"
+    threads : 1
+    shell :
+        "mash sketch -r -p {threads} -k {params.kmer} -s {params.hashes} -o $(echo '{output}' | sed -e 's/.msh//') {input} > {log}"
+
+rule kaiju:
+    params : db_path = config["read_processing"]['kaiju']['db_path'],
+             db = config["read_processing"]['kaiju']['db'],
+             db = config["read_processing"]['kaiju']['uppmax']
+    input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
+    output : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.out.summary", "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.html"
+    log : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.log"
+    threads : config['threads']
+    shell : """
+    module load bioinfo-tools
+    module load Krona
+    kaiju -t {params.db_path}/nodes.dmp -f {params.db_path}/{params.db}   -i 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/{wildcards.sample}_1P.fastq.gz -j 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/{wildcards.sample}_2P.fastq.gz -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -z {threads} > {log}
+    kaiju2krona -u -t {params.db_path}/nodes.dmp -n {params.db_path}/names.dmp -i 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.krona >> {log}
+    ktImportText  -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.html 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.krona >> {log}
+    kaijuReport -p -r genus -t {params.db_path}/nodes.dmp -n {params.db_path}/names.dmp -i 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -r family -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.summary >> {log}
+    """
 #
 # rule matam:
 #     params : db_path = config["read_processing"]['matam']['db_path'],
