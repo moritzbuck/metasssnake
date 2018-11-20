@@ -1,4 +1,4 @@
-rom subprocess import call
+from subprocess import call
 from os.path import join as pjoin
 import os
 import shutil
@@ -9,7 +9,7 @@ temp_dir = os.environ['SNIC_TMP']
 def find_libs(wildcards):
     raw_path = "0000_raws/"
     libs = [f.split("_")[1] for f in os.listdir(raw_path) if f.startswith(wildcards.sample + "_") and "_R1" in f]
-    return ["1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz".format(lib = l, sample=wildcards.sample) l for l in libs]
+    return ["1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz".format(lib = l, sample = wildcards.sample) for l in libs]
 
 # def find_fastq(wildcards):
 #     path = '0000_raws/0100_reads/genomic/'
