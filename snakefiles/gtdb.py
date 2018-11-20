@@ -29,7 +29,9 @@ rule download:
             if not os.path.exists(config['gtdb']['download']['local']):
                 call("wget " + config['gtdb']['download']['remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
             if not os.path.exists(config['gtdb']['download']['ncbi_local']):
-                call("wget " + config['gtdb']['download']['ncbi_remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
+                for f in config['gtdb']['download']['ncbi_remote']:
+                    ###TOFIX PROPERLY
+                    call("wget " + f + " -O " + config['gtdb']['download']['local'], shell=True)
 
             metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
             ncbi_id = metadata['ncbi_genbank_assembly_accession']
@@ -40,7 +42,7 @@ rule download:
             if not os.path.exists(dl_folder):
                 os.makedirs(dl_folder)
 
-            call("wget -r -nd " + metadata['ftp_path'] + " -P " + dl_folder + " 2> /dev/null ", shell=True)
+            call("wget -r -nd " + list(metadata['ftp_path'].values())[0] + " -P " + dl_folder + " 2> /dev/null ", shell=True)
 
             all_files = os.listdir(dl_folder)
 
