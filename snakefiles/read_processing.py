@@ -1,3 +1,6 @@
+import os
+
+temp_dir = os.environ['SNIC_TMP']
 
 def find_fastq(wildcards):
     path = '0000_raws/0100_reads/genomic/'
@@ -130,6 +133,26 @@ rule all_kaiju:
 	all.to_csv(out_file)
 
 
+rule mash_matrix:
+    input : "1000_processed_reads/done"
+    output : "1000_processed_reads/mash_distances.txt"
+    shell :
+        """
+        dir=`dirname {input}`
+        find $dir/*/reads/mash -name "*.msh" > mashes.txt
+
+        for f in `cat mashes.txt`
+        do
+            mash dist -p 20 -l $f mashes.txt
+        done > {output}
+        """
+
+rule mash_report:
+    input : dist_file = "1000_processed_reads/mash_distances.txt",
+            metadata = "9999_metadata/metadata.csv",
+            sample_map = "9999_metadata/sample_map.csv"
+    output : out_pdf = "1000_processed_reads/mash_distances.pdf"
+    script : config['general']['scripts']['mash_report']
 
 
 

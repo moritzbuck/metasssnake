@@ -1,4 +1,10 @@
 
+def all_samples():
+    path = "1000_processed_reads/"
+    samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
+    return samples
+
+
 def all_bams(wildcards):
     samples = all_samples()
     path = "{path}/mapping/bams/".format(path = wildcards.path)
