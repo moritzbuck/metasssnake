@@ -1,6 +1,15 @@
+rom subprocess import call
+from os.path import join as pjoin
 import os
+import shutil
 
 temp_dir = os.environ['SNIC_TMP']
+
+
+def find_libs(wildcards):
+    raw_path = "0000_raws/"
+    libs = [f.split("_")[1] for f in os.listdir(raw_path) if f.startswith(wildcards.sample + "_") and "_R1" in f]
+    return ["1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz".format(lib = l, sample=wildcards.sample) l for l in libs]
 
 # def find_fastq(wildcards):
 #     path = '0000_raws/0100_reads/genomic/'
@@ -32,7 +41,7 @@ rule trimmomatic:
              mem = config["read_processing"]['trimmomatic']['java_vm_mem'],
              options = config["read_processing"]['trimmomatic']['options'],
              processing_options = config["read_processing"]['trimmomatic']['processing_options'],
-             temp_folder = temp_dir 
+             temp_folder = temp_dir
     input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
              rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
     output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
@@ -42,8 +51,8 @@ rule trimmomatic:
     log : "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/log"
     shell:
         """
-        unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
-        unpigz -c {input.rev} >  {params.temp_folder}/temp_R2.fastq
+        unpigz -c -p {threads} {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
+        unpigz -c -p {threads} {input.rev} >  {params.temp_folder}/temp_R2.fastq
 
         {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
         """
@@ -53,10 +62,19 @@ rule merge_libs:
     output : read1 = "1000_processed_reads/{sample}/reads/fwd.fastq.gz",
              read2 = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
              unpaired = "1000_processed_reads/{sample}/reads/unp.fastq.gz"
-    params :
-    shell : """
+    params : temp_folder = temp_dir
+    run :
+        out_fold = pjoin(params.temp_folder, wildcards.sample)
+        dirs = [os.path.dirname(l) for l in input]
+        if not os.path.exists(out_fold):
+            os.makedirs(out_fold)
+        unzip_cmd = "unpigz -c -p {threads} {files} > {temp_fold}"
+        run(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "fwd.fastq")))
+        run(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "rev.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "rev.fastq")))
+        run(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd_unpaired.fastq.gz" ) for d in dirs] + [pjoin(d, "rev_unpaired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "unp.fastq")))
+        run("pigz -p {threads} {temp_fold}/*.fastq".format(temp_fold = out_fold, threads = threads))
+        run("mv {temp_fold}/*.gz {outdir}/".format(outdir = os.path.dirname(outpud.read1), threads = threads))
 
-    """
 
 # rule mash:
 #     params : kmer = config["read_processing"]['mash']['kmer'],
