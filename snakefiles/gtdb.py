@@ -29,9 +29,9 @@ rule download:
             if not os.path.exists(config['gtdb']['download']['local']):
                 call("wget " + config['gtdb']['download']['remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
             if not os.path.exists(config['gtdb']['download']['refseq_local']):
-                call("wget " + config['gtdb']['download']['refseq_remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
+                call("wget " + config['gtdb']['download']['refseq_remote'] + " -O " + config['gtdb']['download']['refseq_local'], shell=True)
             if not os.path.exists(config['gtdb']['download']['genbank_local']):
-                call("wget " + config['gtdb']['download']['genbank_remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
+                call("wget " + config['gtdb']['download']['genbank_remote'] + " -O " + config['gtdb']['download']['genbank_local'], shell=True)
 
             metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
             ncbi_id = metadata['ncbi_genbank_assembly_accession']
