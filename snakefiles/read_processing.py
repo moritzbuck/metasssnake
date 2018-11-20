@@ -48,6 +48,16 @@ rule trimmomatic:
         {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/temp_R1.fastq {params.temp_folder}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
         """
 
+rule merge_libs:
+    input : find_libs
+    output : read1 = "1000_processed_reads/{sample}/reads/fwd.fastq.gz",
+             read2 = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
+             unpaired = "1000_processed_reads/{sample}/reads/unp.fastq.gz"
+    params :
+    shell : """
+
+    """
+
 # rule mash:
 #     params : kmer = config["read_processing"]['mash']['kmer'],
 #              hashes = config["read_processing"]['mash']['hashes'],
