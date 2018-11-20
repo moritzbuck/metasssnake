@@ -1,7 +1,6 @@
 {
   "general" : {
     "home" : "/crex/proj/uppstore2018116/moritz6/",
-    "temp_dir" : "/scratch/",
     "threads" : 20
   },
   "assembly" : {
@@ -36,11 +35,11 @@
   "gtdb" : {
     "download" : {
       "remote" : "https://data.ace.uq.edu.au/public/gtdb/release86/bac_metadata_r86.tsv",
-      "local" : "/home/moritzbuck/data/bac_metadata_r86.tsv",
+      "local" : "/home/moritz/dbs/bac_metadata_r86.tsv",
       "genbank_remote" : "ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt",
       "refseq_remote" :"ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt",
-      "genbank_local" : "/home/moritzbuck/data/assembly_summary_genbank.txt",
-      "refseq_local" : "/home/moritzbuck/data/assembly_summary_refseq.txt",
+      "genbank_local" : "/home/moritz/dbs/assembly_summary_genbank.txt",
+      "refseq_local" : "/home/moritz/dbs/assembly_summary_refseq.txt",
       "retries" : 5
     },
     "hmmer" : {
