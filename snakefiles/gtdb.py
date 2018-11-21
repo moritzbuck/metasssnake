@@ -68,77 +68,77 @@ rule download:
             checked = False
             while(tries < config['gtdb']['download']['retries'] and not checked):
 
-            metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
-            ncbi_id = metadata['ncbi_genbank_assembly_accession'].split(".")[0]
-            refseq = pandas.read_table(config['gtdb']['download']['refseq_local'], skiprows=1, index_col='gbrs_paired_asm', low_memory=False)
-            genbank = pandas.read_table(config['gtdb']['download']['genbank_local'], skiprows=1, index_col=0, low_memory=False)
-            genbank.index = [t.split(".")[0] for t in genbank.index]
-            refseq.index = [t.split(".")[0] for t in refseq.index]
+                metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
+                ncbi_id = metadata['ncbi_genbank_assembly_accession'].split(".")[0]
+                refseq = pandas.read_table(config['gtdb']['download']['refseq_local'], skiprows=1, index_col='gbrs_paired_asm', low_memory=False)
+                genbank = pandas.read_table(config['gtdb']['download']['genbank_local'], skiprows=1, index_col=0, low_memory=False)
+                genbank.index = [t.split(".")[0] for t in genbank.index]
+                refseq.index = [t.split(".")[0] for t in refseq.index]
 
-            if ncbi_id in refseq.index:
-                ncbi_data = refseq.loc[ncbi_id].to_dict()
+                if ncbi_id in refseq.index:
+                    ncbi_data = refseq.loc[ncbi_id].to_dict()
+                else :
+                    ncbi_data = genbank.loc[ncbi_id].to_dict()
+                    metadata.update(ncbi_data)
+
+                dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
+                if not os.path.exists(dl_folder):
+                    os.makedirs(dl_folder)
+
+                call("wget -r -nd " + metadata['ftp_path'] + " -P " + dl_folder + " 2> /dev/null ", shell=True)
+
+                all_files = os.listdir(dl_folder)
+
+                md5_file = "md5checksums.txt"
+                all_files = set(all_files)
+                all_files.remove(md5_file)
+                all_files.remove("README.txt")
+                all_files.remove("assembly_status.txt")
+
+                with open(pjoin(dl_folder, md5_file)) as handle :
+                    md5s = {s.split()[1].split("/")[1] : s.split()[0] for s in handle}
+
+                checked = all([md5Checksum(pjoin(dl_folder,f)) == md5s[f] for f in all_files if md5s.get(f)])
+                tries += 1
+
+            assert checked , "could not download after {tries}".format(tries = tries)
+
+            genomics = [f for f in all_files if f.endswith("_genomic.fna.gz") and not "_from_genomic" in f]
+            assert len(genomics) == 1, "More/less than one gneomics file?"
+            genomics = genomics[0]
+
+            proteomics = [f for f in all_files if f.endswith("_protein.faa.gz")]
+            if len(proteomics) == 0 :
+                call("unpigz " + pjoin(dl_folder, genomics), shell=True)
+
+                exe_str = "prokka --outdir {out_dir}  --force --prefix {prefix} --locustag {prefix} --cpus {threads} {infile}"
+                call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, genomics[:-3])), shell = True)
+                genomics =  wildcards.gtdb_id + ".fna"
+                proteomics =  wildcards.gtdb_id + ".faa"
+                gbks =  wildcards.gtdb_id + ".gbk"
+                cdss =  wildcards.gtdb_id + ".ffn"
+
+                shutil.copy(pjoin(dl_folder, genomics), output.genome)
+                shutil.copy(pjoin(dl_folder, proteomics), output.proteom)
+                shutil.copy(pjoin(dl_folder, gbks), output.gbk)
+                shutil.copy(pjoin(dl_folder, cdss), output.cdss)
             else :
-                ncbi_data = genbank.loc[ncbi_id].to_dict()
-                metadata.update(ncbi_data)
+                assert len(proteomics) == 1, "More/less than one proteins seq file?"
+                proteomics = proteomics[0]
 
-            dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
-            if not os.path.exists(dl_folder):
-                os.makedirs(dl_folder)
+                gbks = [f for f in all_files if f.endswith("_genomic.gbff.gz")]
+                assert len(gbks) == 1, "More/less than one gneomics file?"
+                gbks = gbks[0]
 
-            call("wget -r -nd " + metadata['ftp_path'] + " -P " + dl_folder + " 2> /dev/null ", shell=True)
+                cdss = [f for f in all_files if f.endswith("_cds_from_genomic.fna.gz")]
+                assert len(cdss) == 1, "More/less than one gneomics file?"
+                cdss = cdss[0]
 
-            all_files = os.listdir(dl_folder)
-
-            md5_file = "md5checksums.txt"
-            all_files = set(all_files)
-            all_files.remove(md5_file)
-            all_files.remove("README.txt")
-            all_files.remove("assembly_status.txt")
-
-            with open(pjoin(dl_folder, md5_file)) as handle :
-                md5s = {s.split()[1].split("/")[1] : s.split()[0] for s in handle}
-
-            checked = all([md5Checksum(pjoin(dl_folder,f)) == md5s[f] for f in all_files if md5s.get(f)])
-            tries += 1
-
-        assert checked , "could not download after {tries}".format(tries = tries)
-
-        genomics = [f for f in all_files if f.endswith("_genomic.fna.gz") and not "_from_genomic" in f]
-        assert len(genomics) == 1, "More/less than one gneomics file?"
-        genomics = genomics[0]
-
-        proteomics = [f for f in all_files if f.endswith("_protein.faa.gz")]
-        if len(proteomics) == 0 :
-            call("unpigz " + pjoin(dl_folder, genomics), shell=True)
-
-            exe_str = "prokka --outdir {out_dir}  --force --prefix {prefix} --locustag {prefix} --cpus {threads} {infile}"
-            call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, genomics[:-3])), shell = True)
-            genomics =  wildcards.gtdb_id + ".fna"
-            proteomics =  wildcards.gtdb_id + ".faa"
-            gbks =  wildcards.gtdb_id + ".gbk"
-            cdss =  wildcards.gtdb_id + ".ffn"
-
-            shutil.copy(pjoin(dl_folder, genomics), output.genome)
-            shutil.copy(pjoin(dl_folder, proteomics), output.proteom)
-            shutil.copy(pjoin(dl_folder, gbks), output.gbk)
-            shutil.copy(pjoin(dl_folder, cdss), output.cdss)
-        else :
-            assert len(proteomics) == 1, "More/less than one proteins seq file?"
-            proteomics = proteomics[0]
-
-            gbks = [f for f in all_files if f.endswith("_genomic.gbff.gz")]
-            assert len(gbks) == 1, "More/less than one gneomics file?"
-            gbks = gbks[0]
-
-            cdss = [f for f in all_files if f.endswith("_cds_from_genomic.fna.gz")]
-            assert len(cdss) == 1, "More/less than one gneomics file?"
-            cdss = cdss[0]
-
-            umzip = "unpigz -c {file} > {outfile}"
-            call( umzip.format(file = pjoin(dl_folder, genomics), outfile = output.genome), shell=True)
-            call( umzip.format(file = pjoin(dl_folder, proteomics), outfile = output.proteom), shell=True)
-            call( umzip.format(file = pjoin(dl_folder, gbks), outfile = output.gbk), shell=True)
-            call( umzip.format(file = pjoin(dl_folder, cdss), outfile = output.cdss), shell=True)
+                umzip = "unpigz -c {file} > {outfile}"
+                call( umzip.format(file = pjoin(dl_folder, genomics), outfile = output.genome), shell=True)
+                call( umzip.format(file = pjoin(dl_folder, proteomics), outfile = output.proteom), shell=True)
+                call( umzip.format(file = pjoin(dl_folder, gbks), outfile = output.gbk), shell=True)
+                call( umzip.format(file = pjoin(dl_folder, cdss), outfile = output.cdss), shell=True)
 
         metadata['genome'] = output.genome
         metadata['proteome'] = output.proteom
