@@ -2,9 +2,29 @@ from subprocess import call
 from os.path import join as pjoin
 import os
 import shutil
+import pandas
+import hashlib
+import numpy
 
 metasssnake_path = pjoin(os.environ['HOME'], "repos/moritz/metasssnake/")
-configfile : pjoin(metasssnake_path, "snakefiles" , "params.json")
+
+if not os.path.exists(config['gtdb']['download']['local']):
+    call("wget " + config['gtdb']['download']['remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
+if not os.path.exists(config['gtdb']['download']['refseq_local']):
+    call("wget " + config['gtdb']['download']['refseq_remote'] + " -O " + config['gtdb']['download']['refseq_local'], shell=True)
+if not os.path.exists(config['gtdb']['download']['genbank_local']):
+    call("wget " + config['gtdb']['download']['genbank_remote'] + " -O " + config['gtdb']['download']['genbank_local'], shell=True)
+
+
+def get_taxa(wildcards):
+    metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False)
+    gtdb_ids = list(metadata.loc[[wildcards.taxon in c for c in  metadata.gtdb_taxonomy]].index)
+
+    ncbi_fct = lambda g : "{first}/{second}/{third}/{gtdb_id}/pfams.json".format(first = g.split('_')[-1][0:3],second = g.split('_')[-1][3:6], third = g.split('_')[-1][6:9], gtdb_id = g)
+    uba_fct = lambda g : "UBA/{gtdb_id}/pfams.json".format(gtdb_id = g)
+
+    return [ncbi_fct(f) if not "UBA" in f else uba_fct(f) for f in gtdb_ids]
+
 
 rule download:
     output : gbk = "{path}/{gtdb_id}/genome.gbk",
@@ -15,10 +35,6 @@ rule download:
     params : temp_folder = pjoin(config['general']['temp_dir'], "{gtdb_id}")
     threads : 1
     run :
-        import pandas
-        import hashlib
-        import numpy
-
         def md5Checksum(filePath):
             with open(filePath, 'rb') as fh:
                 m = hashlib.md5()
@@ -29,12 +45,6 @@ rule download:
         tries = 0
         checked = False
         while(tries < config['gtdb']['download']['retries'] and not checked):
-            if not os.path.exists(config['gtdb']['download']['local']):
-                call("wget " + config['gtdb']['download']['remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
-            if not os.path.exists(config['gtdb']['download']['refseq_local']):
-                call("wget " + config['gtdb']['download']['refseq_remote'] + " -O " + config['gtdb']['download']['refseq_local'], shell=True)
-            if not os.path.exists(config['gtdb']['download']['genbank_local']):
-                call("wget " + config['gtdb']['download']['genbank_remote'] + " -O " + config['gtdb']['download']['genbank_local'], shell=True)
 
             metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
             ncbi_id = metadata['ncbi_genbank_assembly_accession'].split(".")[0]
@@ -135,3 +145,11 @@ rule hammer :
 
         with open(output.pfams, "w") as handle:
             json.dump(pfam_dict, handle)
+
+rule process_taxon:
+    input : get_taxa
+    output : pfam_matrix = "{path}/{taxon}/pfam_mat.csv",
+             ani_matrix = "{path}/{taxon}/ani_mat.csv"
+    run :
+        call("touch {file}".format(file = output.pfam_matrix), shell = True)
+        call("touch {file}".format(file = output.ani_matrix), shell = True)
