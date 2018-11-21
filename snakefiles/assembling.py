@@ -1,78 +1,58 @@
-rule megahit_single:
-    params : temp_folder = TEMP_DIR
-    input : fwd = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz",
-            rev = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz",
-            u_rev = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2U.fastq.gz",
-            u_fwd = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1U.fastq.gz"
-    output : assembly = "1000_processed_reads/{sample}/megahit/{sample}.fna",
-             folder = "1000_processed_reads/{sample}/megahit/data",
-             foldermain = "1000_processed_reads/{sample}/megahit"
-    threads : THREADS
-    shell : """
-        unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
-        unpigz -c {input.rev}  >  {params.temp_folder}/temp_R2.fastq
-        unpigz -c {input.u_rev}  >  {params.temp_folder}/temp_U.fastq
-        unpigz -c {input.u_fwd}  >>  {params.temp_folder}/temp_U.fastq
-        megahit  -1 {params.temp_folder}/temp_R1.fastq -2 {params.temp_folder}/temp_R2.fastq -r {params.temp_folder}/temp_U.fastq -t {threads} -o {params.temp_folder}/temp_data --out-prefix megahit --continue
-        rm -r {params.temp_folder}/temp_data/intermediate_contigs/
-        mv {params.temp_folder}/temp_data/ {output.folder}
-        cp 1000_processed_reads/{wildcards.sample}/megahit/data/megahit.contigs.fa {output.assembly}
-    """
-
-rule spades_single:
-    params : temp_folder = TEMP_DIR
-    input : fwd = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz",
-            rev = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz",
-            u_rev = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2U.fastq.gz",
-            u_fwd = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1U.fastq.gz"
-    output : assembly = "1000_processed_reads/{sample}/spades/{sample}.fna",
-             folder = "1000_processed_reads/{sample}/spades/data",
-             foldermain = "1000_processed_reads/{sample}/spades"
-    threads : THREADS
-    shell : """
-        unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
-        unpigz -c {input.rev}  >  {params.temp_folder}/temp_R2.fastq
-        unpigz -c {input.u_rev}  >  {params.temp_folder}/temp_U.fastq
-        unpigz -c {input.u_fwd}  >>  {params.temp_folder}/temp_U.fastq
-        spades.py --meta -1 {params.temp_folder}/temp_R1.fastq -2 {params.temp_folder}/temp_R2.fastq -s {params.temp_folder}/temp_U.fastq -t {threads} -o {params.temp_folder}/temp_data
-        mv {params.temp_folder}/temp_data/ {output.folder}
-        cp 1000_processed_reads/{wildcards.sample}/spades/data/scaffolds.fasta {output.assembly}
-    """
+from subprocess import call
+from os.path import join as pjoin
+import os
+import shutil
 
 
-rule megahit_coas:
-    params : temp_folder = TEMP_DIR
-    input : unpack(get_coas_libs)
-    output :    folder = "1500_assemblies/{name}/megahit/data/",
-                assembly = "1500_assemblies/{name}/megahit/{name}.fna",
-                out = "1500_assemblies/{name}/megahit"
-    threads : THREADS
-    shell : """
-         unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
-         unpigz -c {input.rev}  >  {params.temp_folder}/temp_R2.fastq
-         unpigz -c {input.u_rev}  >  {params.temp_folder}/temp_U.fastq
-         unpigz -c {input.u_fwd}  >>  {params.temp_folder}/temp_U.fastq
-        megahit  -m 0.8 -1 {params.temp_folder}/temp_R1.fastq -2 {params.temp_folder}/temp_R2.fastq -r {params.temp_folder}/temp_U.fastq -t {threads} -o {params.temp_folder}/temp_data --out-prefix megahit --continue
-        rm -r {params.temp_folder}/temp_data/intermediate_contigs/
-        mv {params.temp_folder}/temp_data/* {output.folder}
-        cp 1500_assemblies/{wildcards.name}/megahit/data/megahit.contigs.fa {output.assembly}
-    """
 
-rule spades_coas:
-    params : temp_folder = TEMP_DIR
-    input : unpack(get_coas_libs)
-    output :    folder = "1500_assemblies/{name}/spades/data/",
-                assembly = "1500_assemblies/{name}/spades/{name}.fna",
-                path = "1500_assemblies/{name}/spades"
-    threads : THREADS
-    shell : """
-         unpigz -c {input.fwd}  >  {params.temp_folder}/temp_R1.fastq
-         unpigz -c {input.rev}  >  {params.temp_folder}/temp_R2.fastq
-         unpigz -c {input.u_rev}  >  {params.temp_folder}/temp_U.fastq
-         unpigz -c {input.u_fwd}  >>  {params.temp_folder}/temp_U.fastq
-        spades.py --meta -1 {params.temp_folder}/temp_R1.fastq -2 {params.temp_folder}/temp_R2.fastq -s {params.temp_folder}/temp_U.fastq -t {threads} -o {params.temp_folder}/temp_data
+def get_libs(wildcards):
+    sets_dir = pjoin(config['general']['home'] , "9000_metadata/9100_samplesets/")
+    sample_sets = [ f[:-4] for f in os.listdir(sets_dir) ]
+    if wildcards.sample in sample_sets:
+        with open(pjoin(sets_dir, wildcards.sample +".txt")) as handle:
+            samples = [l.rstrip() for l in handle]
+        output = {
+            'fwd' : ["1000_processed_reads/{sample}/reads/fwd.fastq.gz".format(sample = s) for s in samples],
+            'rev' : ["1000_processed_reads/{sample}/reads/rev.fastq.gz".format(sample = s) for s in samples],
+            'unp' : ["1000_processed_reads/{sample}/reads/unp.fastq.gz".format(sample = s) for s in samples]}
+        return output
+    else : 
+        output = {
+            'fwd' : "1000_processed_reads/{sample}/reads/fwd.fastq.gz".format(sample = wildcards.sample),
+            'rev' : "1000_processed_reads/{sample}/reads/rev.fastq.gz".format(sample = wildcards.sample),
+            'unp' : "1000_processed_reads/{sample}/reads/unp.fastq.gz".format(sample = wildcards.sample)}
+        return output
 
-        mv {params.temp_folder}/temp_data/* {output.folder}
-        cp 1000_processed_reads/{wildcards.name}/spades/data/scaffolds.fasta {output.assembly}
 
-    """
+rule assemble:
+    params : temp_folder = pjoin(config['general']['temp_dir'], "{sample}", "{assembler}")
+    input : unpack(get_libs)
+    output : assembly = "{path}/{sample}/assemblies/{assembler}/assembly.fna",
+             folder = "{path}/{sample}/assemblies/{assembler}/data"
+    threads : 20
+    run :
+        os.makedirs(params.temp_folder, exist_ok = True)
+        unzip_cmd = "unpigz -c -p {threads} {files} > {temp_fold}"
+        fwd = pjoin(params.temp_folder, "fwd.fastq")
+        rev = pjoin(params.temp_folder, "rev.fastq")
+        unp = pjoin(params.temp_folder, "unp.fastq")
+
+        call(unzip_cmd.format(threads = threads, files = " ".join(input.fwd) if type(input.fwd) == list else input.fwd , temp_fold = fwd), shell = True)
+        call(unzip_cmd.format(threads = threads, files = " ".join(input.rev) if type(input.rev) == list else input.rev , temp_fold = rev), shell = True)
+        call(unzip_cmd.format(threads = threads, files = " ".join(input.unp) if type(input.unp) == list else input.unp , temp_fold = unp), shell = True)
+
+        if wildcards.assembler == "megahit":
+            call("megahit --continue -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
+            shutil.rmtree(pjoin(params.temp_folder, "data", intermediate_contigs))
+            shutil.move(pjoin(params.temp_folder, "data"), output.folder)
+            os.symlink(pjoin(output.folder, "megahit.contigs.fa"), output.assembly)
+
+        elif wildcards.assembler == "spades":
+            call("spades.py --meta  -1 {fwd} -2 {rev} -s {unp} -t {threads} -o {outfold}".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = params.temp_folder), shell = True)
+#            shutil.rmtree(pjoin(params.temp_folder, intermediate_contigs))
+            shutil.move(params.temp_folder, output.folder)
+            os.symlink(pjoin(output.folder, "scaffolds.fasta"), output.assembly)
+        else :
+            print("Not an accepted assembler") 
+            return "broken"
+

@@ -44,6 +44,7 @@ rule trimmomatic:
              temp_folder = temp_dir
     input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
              rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
+    threads : 20 
     output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
              read2 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/rev_paired.fastq.gz",
              read1U = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_unpaired.fastq.gz",
@@ -51,11 +52,11 @@ rule trimmomatic:
     log : "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/log"
     shell:
         """
-        mkdirs -p {params.temp_folder}/{sample}_{lib}/
-        unpigz -c -p {threads} {input.fwd}  >  {params.temp_folder}/{sample}_{lib}/temp_R1.fastq
-        unpigz -c -p {threads} {input.rev} >  {params.temp_folder}/{sample}_{lib}/temp_R2.fastq
+        mkdir -p {params.temp_folder}/{wildcards.sample}_{wildcards.lib}/
+        unpigz -c -p {threads} {input.fwd}  >  {params.temp_folder}/{wildcards.sample}_{wildcards.lib}/temp_R1.fastq
+        unpigz -c -p {threads} {input.rev} >  {params.temp_folder}/{wildcards.sample}_{wildcards.lib}/temp_R2.fastq
 
-        {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/{sample}_{lib}/temp_R1.fastq {params.temp_folder}/{sample}_{lib}/temp_R2.fastq -threads {threads} {output.read1} {output.read2} {output.read1U} {output.read2U} {params.processing_options} 2> {log}
+        {params.java_cmd} -Xmx{params.mem} -Djava.io.tmpdir={params.temp_folder} -jar {params.jar_file} PE {params.options} {params.temp_folder}/{wildcards.sample}_{wildcards.lib}/temp_R1.fastq {params.temp_folder}/{wildcards.sample}_{wildcards.lib}/temp_R2.fastq -threads {threads} {output.read1} {output.read1U} {output.read2}  {output.read2U} {params.processing_options} 2> {log}
         """
 
 rule merge_libs:
@@ -74,7 +75,7 @@ rule merge_libs:
         call(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "rev_paired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "rev.fastq")), shell = True)
         call(unzip_cmd.format(threads = threads, files = " ".join([pjoin(d, "fwd_unpaired.fastq.gz" ) for d in dirs] + [pjoin(d, "rev_unpaired.fastq.gz" ) for d in dirs]), temp_fold = pjoin(out_fold, "unp.fastq")), shell = True)
         call("pigz -p {threads} {temp_fold}/*.fastq".format(temp_fold = out_fold, threads = threads), shell = True)
-        call("mv {temp_fold}/*.gz {outdir}/".format(outdir = os.path.dirname(outpud.read1), threads = threads), shell = True)
+        call("mv {temp_fold}/*.gz {outdir}/".format(temp_fold = out_fold, outdir = os.path.dirname(output.read1), threads = threads), shell = True)
 
 
 rule mash:
@@ -90,11 +91,9 @@ rule mash:
 rule kaiju:
     params : db_path = config["read_processing"]['kaiju']['db_path'],
              db = config["read_processing"]['kaiju']['db'],
-             db = config["read_processing"]['kaiju']['uppmax']
     input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
     output : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.out.summary", "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.html"
     log : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.log"
-    threads : config['threads']
     shell : """
     module load bioinfo-tools
     module load Krona
