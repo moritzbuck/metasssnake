@@ -47,7 +47,22 @@ rule download:
                     m.update(l)
                 return m.hexdigest()
         if wildcards.gtdb_id.startswith("UBA"):
+            dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
+            if not os.path.exists(dl_folder):
+                os.makedirs(dl_folder)
 
+            os.copy(pjoin( config['gtdb']['download']['uba_local'], wildcards.gtdb_id + ".fsa"), dl_folder )
+            exe_str = "prokka --outdir {out_dir}  --force --prefix {prefix} --locustag {prefix} --cpus {threads} {infile}"
+            call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, wildcards.gtdb_id + ".fsa")), shell = True)
+            genomics =  wildcards.gtdb_id + ".fna"
+            proteomics =  wildcards.gtdb_id + ".faa"
+            gbks =  wildcards.gtdb_id + ".gbk"
+            cdss =  wildcards.gtdb_id + ".ffn"
+
+            shutil.copy(pjoin(dl_folder, genomics), output.genome)
+            shutil.copy(pjoin(dl_folder, proteomics), output.proteom)
+            shutil.copy(pjoin(dl_folder, gbks), output.gbk)
+            shutil.copy(pjoin(dl_folder, cdss), output.cdss)
         else :
             tries = 0
             checked = False
