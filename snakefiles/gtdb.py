@@ -14,7 +14,12 @@ if not os.path.exists(config['gtdb']['download']['refseq_local']):
     call("wget " + config['gtdb']['download']['refseq_remote'] + " -O " + config['gtdb']['download']['refseq_local'], shell=True)
 if not os.path.exists(config['gtdb']['download']['genbank_local']):
     call("wget " + config['gtdb']['download']['genbank_remote'] + " -O " + config['gtdb']['download']['genbank_local'], shell=True)
-
+if not os.path.exists(config['gtdb']['download']['uba_local']):
+    shutil.makedirs(config['gtdb']['download']['uba_local'])
+    call("wget " + config['gtdb']['download']['uba'] + " -O " + config['gtdb']['download']['uba_local'] + "../temp.tar.gz" , shell=True)
+    call("tar xzvf " + config['gtdb']['download']['uba_local'] + "../temp.tar.gz" , shell=True)
+    call("mv " + config['gtdb']['download']['uba_local'] + "../UBA*.fsa " + config['gtdb']['download']['uba_local'] , shell=True)
+    os.remove(config['gtdb']['download']['uba_local'] + "../temp.tar.gz")
 
 def get_taxa(wildcards):
     metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False)
@@ -41,10 +46,12 @@ rule download:
                 for l in fh:
                     m.update(l)
                 return m.hexdigest()
+        if wildcards.gtdb_id.startswith("UBA"):
 
-        tries = 0
-        checked = False
-        while(tries < config['gtdb']['download']['retries'] and not checked):
+        else :
+            tries = 0
+            checked = False
+            while(tries < config['gtdb']['download']['retries'] and not checked):
 
             metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
             ncbi_id = metadata['ncbi_genbank_assembly_accession'].split(".")[0]
@@ -57,7 +64,7 @@ rule download:
                 ncbi_data = refseq.loc[ncbi_id].to_dict()
             else :
                 ncbi_data = genbank.loc[ncbi_id].to_dict()
-            metadata.update(ncbi_data)
+                metadata.update(ncbi_data)
 
             dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
             if not os.path.exists(dl_folder):

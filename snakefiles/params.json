@@ -1,7 +1,8 @@
 {
   "general" : {
     "home" : "/crex/proj/uppstore2018116/moritz6/",
-    "threads" : 20
+    "threads" : 20,
+    "temp_dir" : "/tmp/"
   },
   "assembly" : {
     "coas_files_dir" : "/crex/proj/uppstore2018116/moritz6/0000_raws/0200_coasses/"
@@ -40,6 +41,8 @@
       "refseq_remote" :"ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt",
       "genbank_local" : "/home/moritz/dbs/assembly_summary_genbank.txt",
       "refseq_local" : "/home/moritz/dbs/assembly_summary_refseq.txt",
+      "uba" : "https://data.ace.uq.edu.au/public/gtdb/release80/gtdb_uba_mags.tar.gz",
+      "uba_local" : "/home/moritz/dbs/UBA/",
       "retries" : 5
     },
     "hmmer" : {
