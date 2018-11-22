@@ -30,6 +30,17 @@ def get_taxa(wildcards):
 
     return [ncbi_fct(f) if not "UBA" in f else uba_fct(f) for f in gtdb_ids]
 
+def all_taxa(wildcards):
+    levels = {
+        "phylum" : 1,
+        "class" : 2,
+        "order" : 3,
+        "family" : 4,
+        "genus" : 5,
+        "species" : 6}
+    metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False)
+    all_tax = set([l.split(";")[levels[wildcards.level]] for l in metadata.gtdb_taxonomy])
+    return ["{path}/{level}/{taxon}/ani_mat.csv".format(path = wildcards.path, level = wildcards.path, taxon =tax) for tax in all_tax]
 
 rule download:
     output : gbk = "{path}/{gtdb_id}/genome.gbk",
@@ -46,12 +57,15 @@ rule download:
                 for l in fh:
                     m.update(l)
                 return m.hexdigest()
+        metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
+
+
         if wildcards.gtdb_id.startswith("UBA"):
             dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
             if not os.path.exists(dl_folder):
                 os.makedirs(dl_folder)
 
-            os.copy(pjoin( config['gtdb']['download']['uba_local'], wildcards.gtdb_id + ".fsa"), dl_folder )
+            shutil.copy(pjoin( config['gtdb']['download']['uba_local'], wildcards.gtdb_id + ".fsa"), dl_folder )
             exe_str = "prokka --outdir {out_dir}  --force --prefix {prefix} --locustag {prefix} --cpus {threads} {infile}"
             call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, wildcards.gtdb_id + ".fsa")), shell = True)
             genomics =  wildcards.gtdb_id + ".fna"
@@ -68,7 +82,6 @@ rule download:
             checked = False
             while(tries < config['gtdb']['download']['retries'] and not checked):
 
-                metadata = pandas.read_csv(config['gtdb']['download']['local'], sep = '\t', index_col = 0, low_memory=False).loc[wildcards.gtdb_id].to_dict()
                 ncbi_id = metadata['ncbi_genbank_assembly_accession'].split(".")[0]
                 refseq = pandas.read_table(config['gtdb']['download']['refseq_local'], skiprows=1, index_col='gbrs_paired_asm', low_memory=False)
                 genbank = pandas.read_table(config['gtdb']['download']['genbank_local'], skiprows=1, index_col=0, low_memory=False)
@@ -175,3 +188,7 @@ rule process_taxon:
     run :
         call("touch {file}".format(file = output.pfam_matrix), shell = True)
         call("touch {file}".format(file = output.ani_matrix), shell = True)
+
+rule all_taxa:
+    input : all_taxa
+    output : touch("{path}/{level}/all_computed.flag")
