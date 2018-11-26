@@ -16,7 +16,7 @@ def get_libs(wildcards):
             'rev' : ["1000_processed_reads/{sample}/reads/rev.fastq.gz".format(sample = s) for s in samples],
             'unp' : ["1000_processed_reads/{sample}/reads/unp.fastq.gz".format(sample = s) for s in samples]}
         return output
-    else : 
+    else :
         output = {
             'fwd' : "1000_processed_reads/{sample}/reads/fwd.fastq.gz".format(sample = wildcards.sample),
             'rev' : "1000_processed_reads/{sample}/reads/rev.fastq.gz".format(sample = wildcards.sample),
@@ -42,7 +42,7 @@ rule assemble:
         call(unzip_cmd.format(threads = threads, files = " ".join(input.unp) if type(input.unp) == list else input.unp , temp_fold = unp), shell = True)
 
         if wildcards.assembler == "megahit":
-            call("megahit --continue -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
+            call("megahit -m 0.8 -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
             shutil.rmtree(pjoin(params.temp_folder, "data", "intermediate_contigs"))
             shutil.move(pjoin(params.temp_folder, "data"), output.folder)
             os.symlink(pjoin(os.getcwd(),output.folder, "megahit.contigs.fa"), output.assembly)
@@ -53,6 +53,5 @@ rule assemble:
             shutil.move(params.temp_folder, output.folder)
             os.symlink(pjoin(os.getcwd(),output.folder, "scaffolds.fasta"), output.assembly)
         else :
-            print("Not an accepted assembler") 
+            print("Not an accepted assembler")
             return "broken"
-

@@ -2,6 +2,7 @@ from subprocess import call
 from os.path import join as pjoin
 import os
 import shutil
+from subprocess import Popen, PIPE
 
 shell.prefix("module load bioinfo-tools bbmap samtools; ")
 
@@ -49,7 +50,7 @@ rule bbmap_index:
              folder = "{path}/{fasta}/mapping",
              gz = "{path}/{fasta}/mapping/ref/genome/1/chr1.chrom.gz",
              flag = "{path}/{fasta}/mapping/ref.ed"
-    run : 
+    run :
        call("bbmap.sh ref={ref} path={folder}".format(ref = input.ref, folder = output.folder), shell = True)
        call("touch " + output.flag, shell = True)
 
@@ -107,23 +108,28 @@ rule bbmap_binning_samples:
 
 
 rule bbmap_diagnostic:
-    params : reads = config['mapping']['diagnostic']['reads']
-    input : ref = "{path}/mapping/ref.ed", 
+    input : ref_path = "{path}/mapping/",
             libs = all_clean_libs
-    output : "{path}/mapping/mapping_rates.txt",
+    output : table = "{path}/mapping/mapping_rates.txt",
     threads : 20
-    run : 
-       for fwd in input.libs:
-           sample = fwd.split("/")[1]
-           rev = fwd.replace("fwd.fastq.gz", "rev.fastq.gz")
-           print("echo mapping {sample} to {ref}".format(sample = sample, ref = input.ref))
-           bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out=/dev/null reads={reads}"
-           call(bb_string.format(fwd = fwd, rev = rev, threads = threads), shell = True, 
-           cat tmp | grep -E "mated|mapped" | cut -f2  | tr -d ' ' | tr -d % | tr '\n'  '\t' >>  $home/{output}
-           echo >> $home/{output}
-           rm tmp
-
-       pass
+    run :
+        import pandas
+        out_dict = {}
+        for fwd in input.libs:
+            sample = fwd.split("/")[1]
+            rev = fwd.replace("fwd.fastq.gz", "rev.fastq.gz")
+            print("echo mapping {sample} to {ref}".format(sample = sample, ref = input.ref_path))
+            bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out=/dev/null reads={reads} path={ref}"
+            process = Popen(bb_string.format(fwd = fwd, rev = rev, threads = threads, ref = input.ref_path, reads = config['mapping']['diagnostic']['reads']), shell = True)
+            out, err = process.communicate()
+            out_dat = [l for l in err.decode().split("\n") ]
+            raw_map = sum([float(l.split()[1][:-1]) for l in out_dat if l.startswith("mapped:")])/2
+            mated_map = [float(l.split()[2][:-1]) for l in out_dat if l.startswith("mated pairs: ")][0]
+            out_dict[sample] = {
+            'raw_map' : raw_map,
+            'mated_map' : mated_map
+            }
+       pandas.DataFrame(out_dict, orient = "index").to_csv(output.table)
        """
         module load bioinfo-tools
         module load bbmap
@@ -139,7 +145,7 @@ rule bbmap_diagnostic:
             echo mapping $s to {wildcards.path}
             base={params.home}/$s/reads/trimmomatic/$s
             bbmap.sh  in=${{base}}_1P.fastq.gz in2=${{base}}_2P.fastq.gz threads={threads} out=/dev/null reads={params.reads} 2> tmp
-            
+
 echo -n $s $'\t' >>  $home/{output}
             cat tmp | grep -E "mated|mapped" | cut -f2  | tr -d ' ' | tr -d % | tr '\n'  '\t' >>  $home/{output}
             echo >> $home/{output}
