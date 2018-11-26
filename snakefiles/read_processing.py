@@ -65,6 +65,7 @@ rule merge_libs:
              read2 = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
              unpaired = "1000_processed_reads/{sample}/reads/unp.fastq.gz"
     params : temp_folder = temp_dir
+    threads : 20
     run :
         out_fold = pjoin(params.temp_folder, wildcards.sample)
         dirs = [os.path.dirname(l) for l in input]

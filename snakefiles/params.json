@@ -46,7 +46,7 @@
       "retries" : 5
     },
     "hmmer" : {
-      "pfams_db" : "/scratch/Pfam-A.hmm"
+      "pfams_db" : "/home/moritz/dbs/pfam/Pfam-A.hmm"
     }
   }
 }
