@@ -48,5 +48,10 @@
     "hmmer" : {
       "pfams_db" : "/home/moritz/dbs/pfam/Pfam-A.hmm"
     }
+  },
+  "mapping" : {
+      "diagnostic" :  {
+	  "reads" : 100000
+      }
   }
 }
