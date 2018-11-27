@@ -29,12 +29,12 @@ rule clean_metabat:
 
 
 rule metabat :
-    input : assembly = "{path}/{name}/assemblies/{assembler}/assembly.fna",
-            mapping = "{path}/{name}/assemblies/{assembler}/assembly/mapping/map_table.tsv"
-    output : file = "{path}/{name}/assemblies/{assembler}/binning/metabat/clusters.txt"
+    input : assembly = "{path}/assembly.fna",
+            mapping = "{path}/assembly/mapping/map_table.tsv"
+    output : file = "{path}/binning/metabat/clusters.txt"
     run :
         metabat_str = "metabat2 --maxP {maxP} --minS {minS} -m {min_len}  -s {min_bin_size} -i  {ass} -o {output} -a {mapping}  --saveCls  --unbinned -t {threads}"
-        call(metabat_str.format(*config['binning']['metabat'], ass = input.assembly, output = output.file, mapping = input.mapping, threads = threads), shell = True)
+        call(metabat_str.format(**config['binning']['metabat'], ass = input.assembly, output = output.file, mapping = input.mapping, threads = threads), shell = True)
 
 rule concoct :
     params : min_len = 1500,
@@ -44,7 +44,6 @@ rule concoct :
     input : mapping = "{path}/{name}/{assembler}/mapping/binmap_table.tsv"
     output : file = "{path}/{name}/{assembler}/mapping/concoct/concoct_{name}",
              concoct_abundances = "{path}/{name}/{assembler}/mapping/concoct/concoct_{name}.tsv"
-    threads : THREADS
     shell : """
     columns=`head -n1 {input.mapping} | sed 's/\t/\n/g' | grep -n bam | grep -v var | cut -f1 -d":" | sed 's/$/,/' | tr -d '\n'`
     cut -f1,${columns%%,} -d$'\t' {input.mapping} > {output.concoct_abundances}
@@ -57,7 +56,6 @@ rule maxbin :
             assembly = "{path}/{name}/{assembler}/{name}.fna"
     output : file = "{path}/{name}/{assembler}/mapping/maxbin/maxbin_{name}",
              maxbin_abunds = "{path}/{name}/{assembler}/mapping/maxbin/maxbin_{name}.tsv"
-    threads : THREADS
     shell : """
     mkdir `dirname  {output.maxbin_abunds}`/abunds
     columns=`head -n1 {input.assembly} | tr "\t" "\n" | grep -n bam | grep -v var | cut -f1 -d":" | sed 's/$/,/' | tr -d '\n'`
