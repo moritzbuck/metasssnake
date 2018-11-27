@@ -4,28 +4,39 @@ import os
 import shutil
 
 rule clean_metabat:
-    input : "{path}/{name}/{assembler}/mapping/metabat/metabat_{name}"
-    output : "{path}/{name}/{assembler}/MAGs/metabat_{name}-unbinned.fa"
+    input : clusters = "{path}/binning/metabat/clusters.txt",
+            assembly = "{path}/assembly.fna"
+    output : folder = directory("{path}/binning/metabat/bins")
     run :
         import os
         from Bio import SeqIO
         from os.path import join as pjoin
         from tqdm import tqdm
 
-        ipath = pjoin(os.path.dirname(input[0]))
-        opath = output[0]
-        os.makedirs(opath)
-        for f in tqdm(os.listdir(ipath)):
-            if f[-3:] == ".fa":
-                with open(pjoin(ipath, f)) as handle:
-                    seqs = [s for s in SeqIO.parse(handle, "fasta")]
-                zeros = len(str(len(seqs)))
-                bin_name = f[:-3]
-                for i,s in enumerate(seqs):
-                    s.id = bin_name.replace(".","-") + "-" + str(i+1).zfill(zeros)
-                    s.description = ""
-                with open(pjoin(opath, f[:-3].replace(".","-")+".fa"), "w") as handle:
-                    SeqIO.write(seqs, handle, "fasta")
+        with open(input.clusters) as handle :
+            clsts = { l.split()[0] : l[1] for l in handle}
+        map = { c  : i  for i,c in enumerate(set(clsts.values())) if c != 0 }
+        map[0] = "unbinned"
+        clsts = {k : map[v] for k, v in clsts.items()}
+        zero = len(str(len(map)))
+        seqs = {c : [] for c in for clsts.values()}
+        seq_count = {c : 0 for c in for clsts.values()}
+        seq_tot = {c : clst.values().count(c) for c in for clsts.values()}
+        seq_zeros = {c : len(str(clst.values().count(c))) for c in for clsts.values()}
+
+        for s in tqdm(SeqIO.parse(input.assembly, "fasta")):
+            nam = s.id.split()[0]
+            c = clsts[nam]
+            b_id = str(c).zfill(zero)
+            seq_count[c] += 1
+            pos = str(seq_count[c]).zfill(seq_zeros[c]) + "/" + str(seq_tot[c])
+            s.id = "bin_" + b_id + ":" + pos
+            s.description = ""
+            seqs[c] += [seq_rec]
+
+        for k, v in seqs:
+            SeqIO.write(v, pjoin(output.folder, "bin_" + str(k).zfill(zero) + ".fasta", "fasta")
+
 
 
 rule metabat :
