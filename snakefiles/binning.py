@@ -1,5 +1,7 @@
-sn
-
+from subprocess import call
+from os.path import join as pjoin
+import os
+import shutil
 
 rule clean_metabat:
     input : "{path}/{name}/{assembler}/mapping/metabat/metabat_{name}"
@@ -27,16 +29,12 @@ rule clean_metabat:
 
 
 rule metabat :
-    params : min_len = 1500,
-             min_bin_size = 10000,
-             maxP = 93,
-             minS = 50
-    input : mapping = "{path}/{name}/{assembler}/mapping/binmap_table.tsv"
-    output : file = "{path}/{name}/{assembler}/mapping/metabat/metabat_{name}"
-    threads : THREADS
-    shell : """
-    metabat2 --maxP {params.maxP} --minS {params.minS} -m {params.min_len}  -s {params.min_bin_size} -i  {wildcards.path}/{wildcards.name}/{wildcards.assembler}/{wildcards.name}.fna -o {output.file} -a {input.mapping}  --saveCls  --unbinned -t {threads}
-    """
+    input : assembly = "{path}/{name}/assemblies/{assembler}/assembly.fna",
+            mapping = "{path}/{name}/assemblies/{assembler}/assembly/mapping/map_table.tsv"
+    output : file = "{path}/{name}/assemblies/{assembler}/binning/metabat/clusters.txt"
+    run :
+        metabat_str = "metabat2 --maxP {maxP} --minS {minS} -m {min_len}  -s {min_bin_size} -i  {ass} -o {output} -a {mapping}  --saveCls  --unbinned -t {threads}"
+        call(metabat_str.format(*config['binning']['metabat'], ass = input.assembly, output = output.file, mapping = input.mapping, threads = threads), shell = True)
 
 rule concoct :
     params : min_len = 1500,
