@@ -1,24 +1,4 @@
-def all_bin_samples(wildcards):
-    path = "{path}/mapping/".format(path = wildcards.path)
-    folds = [i for i,v in  enumerate(path.split("/")) if v == "1500_assemblies"]
-    if len(folds) == 1:
-        coas_name = path.split("/")[folds[0]+1]
-        with open(pjoin(COAS_FILES_DIR, coas_name + ".txt")) as handle:
-            samples_from_coas = [l.strip() for l in handle]
-    else :
-        samples_from_coas = []
-    rates_file = pjoin(path,"mapping_rates.txt")
-    with open( rates_file ) as  handle:
-        rates = {l.split()[0] : float(l.split()[1]) for l in handle.readlines()[1:] if float(l.split()[1]) == float(l.split()[1])}
-    vvs = sorted(list(rates.values()),reverse = True)
-    cutoff = vvs[-1] if len(vvs) < BIN_MAPPING_LIBS else vvs[BIN_MAPPING_LIBS]
-    cutoff = cutoff if cutoff > BIN_MAP_MIN else BIN_MAP_MIN
-    samples = [k for k, v in rates.items() if v > cutoff]
-    samples = list(set(samples_from_coas).union(samples))
-    if CLEAN_BINNING and len(samples_from_coas) > 1:
-        samples = samples_from_coas
-    return [pjoin(pjoin(path,"bams",s + ".bam")) for s in samples]
-
+sn
 
 
 rule clean_metabat:

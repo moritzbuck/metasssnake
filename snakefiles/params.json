@@ -8,7 +8,7 @@
     "coas_files_dir" : "/crex/proj/uppstore2018116/moritz6/0000_raws/0200_coasses/"
   },
   "binning" : {
-    "bin_mapping_libs" : 20,
+    "bin_mapping_libs" : 12,
     "bin_map_min" : 15
   },
   "read_processing" : {

@@ -6,38 +6,33 @@ from subprocess import Popen, PIPE
 
 shell.prefix("module load bioinfo-tools bbmap samtools; ")
 
-def all_samples():
-    path = "1000_processed_reads/"
-    samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
-    return samples
-
+def all_samples(wildcards):
+        import pandas 
+        if config['general'].get('exp_json'):
+            with open(config['general'].get('exp_json')) as handle:
+                sets = json.load(handle)
+                sample = [ f for 
+f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
+                assert len(sample) < 2
+                if len(sample) == 1: 
+                    sety = [k for k, v in sets.items() if sample[0] in v]
+                    assert len(sety)==1
+                    sample_from_sets = sets[sety[0]]
+            return sample_from_sets
+        else :
+            path = "1000_processed_reads/"
+            samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
+            return samples
 
 def all_bams(wildcards):
-    samples = all_samples()
+    samples = all_samples(wildcards)
     path = "{path}/mapping/bams/".format(path = wildcards.path)
     return [pjoin(path,s + ".bam") for s in samples]
 
 
 def all_bin_samples(wildcards):
-    path = "{path}/mapping/".format(path = wildcards.path)
-    folds = [i for i,v in  enumerate(path.split("/")) if v == "1500_assemblies"]
-    if len(folds) == 1:
-        coas_name = path.split("/")[folds[0]+1]
-        with open(pjoin(COAS_FILES_DIR, coas_name + ".txt")) as handle:
-            samples_from_coas = [l.strip() for l in handle]
-    else :
-        samples_from_coas = []
-    rates_file = pjoin(path,"mapping_rates.txt")
-    with open( rates_file ) as  handle:
-        rates = {l.split()[0] : float(l.split()[1]) for l in handle.readlines()[1:] if float(l.split()[1]) == float(l.split()[1])}
-    vvs = sorted(list(rates.values()),reverse = True)
-    cutoff = vvs[-1] if len(vvs) < BIN_MAPPING_LIBS else vvs[BIN_MAPPING_LIBS]
-    cutoff = cutoff if cutoff > BIN_MAP_MIN else BIN_MAP_MIN
-    samples = [k for k, v in rates.items() if v > cutoff]
-    samples = list(set(samples_from_coas).union(samples))
-    if CLEAN_BINNING and len(samples_from_coas) > 1:
-        samples = samples_from_coas
-    return [pjoin(pjoin(path,"bams",s + ".bam")) for s in samples]
+    with open(pjoin(wildcards.path), "/mapping/bined_samples.txt") as handle:
+        return [l.split(",")[0] for l in handle]
 
 def all_clean_libs(wildcards):
     files = os.listdir(config['general']['raw_folder'])
@@ -54,63 +49,82 @@ rule bbmap_index:
        call("bbmap.sh ref={ref} path={folder}".format(ref = input.ref, folder = output.folder), shell = True)
        call("touch " + output.flag, shell = True)
 
-rule samnple_wise_bbmap :
-    input : index = "{path}/mapping/ref/genome/1/chr1.chrom.gz",
-            fwd = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz",
-            rev = "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
+rule sample_wise_bbmap :
+    input : index = "{path}/mapping/ref.ed",
+            ref_path = "{path}/mapping/",
+            fwd = "1000_processed_reads/{sample}/reads/fwd.fastq.gz",
+            rev = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
     output : bam = "{path}/mapping/bams/{sample}.bam",
-#             wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
-#             stats = "{path}/mapping/bams/{sample}.stats"
+             wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
+             stats = "{path}/mapping/bams/{sample}.stats",
     threads : 20
-    shell : """
-        module load bioinfo-tools
-        module load bbmap
-        module load samtools
+    run : 
+        bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
+        temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
+        bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
+        call(bb_string.format(fwd = input.fwd, rev = input.rev, threads = threads, ref = input.ref_path, out = temp_bam, bams = bamsc), shell = True, stderr = PIPE)
+        call(bamsc, shell=True)
+        call("sambamba flagstat -t {threads} {tdir}/{samp}_sorted.bam > {wdup}".format(threads = threads, samp = wildcards.sample, wdup = output.wdups_stats, tdir = config['general']['temp_dir']), shell=True)
+        call("samtools rmdup  {tdir}/{samp}_sorted.bam {tdir}/{samp}.bam 2> /dev/null".format(samp = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
+        call("samtools index {tdir}/{sample}.bam". format(sample = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
+        call("sambamba flagstat  -t {threads} {tdir}/{samp}.bam > {stats}".format(threads = threads, samp = wildcards.sample, stats = output.stats, tdir = config['general']['temp_dir']), shell = True)        
+        os.remove("rm {tdir}/{sample}.sam {tdir}/{sample}_sorted.bam".format(sample = wildcards.sample, tdir = config['general']['temp_dir']))
+        for f in os.listdir(config['general']['temp_dir']):
+            if f.startswith(wildcards.sample + ".bam"):
+                  shutil.move(pjoin(config['general']['temp_dir'], f), os.path.dirname(output.bam))
 
-        home=`pwd`
-        cd `dirname {input.index}`/../../../
-
-        bbmap.sh  in=$home/{input.fwd} in2=$home/{input.rev} threads={threads} bamscript=/scratch/{wildcards.sample}.sh out=/scratch/{wildcards.sample}.sam
-
-        /scratch/{wildcards.sample}.sh
-        sambamba flagstat -t {threads} /scratch/{wildcards.sample}_sorted.bam > $home/{wildcards.sample}_sorted.stats
-        samtools rmdup  /scratch/{wildcards.sample}_sorted.bam /scratch/{wildcards.sample}.bam
-        samtools index /scratch/{wildcards.sample}.bam
-        sambamba flagstat  -t {threads} /scratch/{wildcards.sample}.bam > $home/{wildcards.sample}.stats
-
-        rm /scratch/{wildcards.sample}.sam
-        rm /scratch/{wildcards.sample}_sorted.bam*
-        mv /scratch/{wildcards.sample}.bam* bams/
-    """
-
-
-#rule summrize_bbmap:
-#    input
 
 rule bbmap_all_samples:
-    input : "{path}/mapping/ref/genome/1/chr1.chrom.gz", all_bams
-    output : "{path}/mapping/map_table.tsv",
-    threads : 1
+    input : "{path}/mapping/ref.ed", "{path}/mapping/", all_bams
+    output : "{path}/mapping/map_table.tsv", "{path}/mapping/paired_contigs.tsv"
+    threads : 20
     shell : """
-    jgi_summarize_bam_contig_depths --outputDepth {input[0]}/map_table.tsv  --pairedContigs {input[0]}/paired_contigs.tsv  {input[0]}/bams/*.bam
+    jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  {input[1]}/bams/*.bam
     """
 
-rule bbmap_binning_samples:
-    params : home = pjoin(config['general']['home'],"1000_processed_reads"),
-    input : index = "{path}/mapping/ref/genome/1/chr1.chrom.gz",
-    	    path = "{path}/mapping/",
-            bams = all_bin_samples
-    output : "{path}/mapping/binmap_table.tsv",
+rule bbmap_bining_map:
+    input : diag_map = "{path}/mapping/mapping_rates.txt"
+    output : sample_list = dynamic("{path}/mapping/bams/{sample}.ph")
     threads : 1
+    run :
+        import pandas 
+        rates_dict = {k : v['raw_map'] for k,v in pandas.read_csv(input.diag_map, index_col=0).transpose().to_dict()
+.items()}
+        if config['general'].get('exp_json'):
+            with open(config['base'].get('exp_json')) as handle:
+                sets = json.load(handle)
+                sample = [ f for 
+f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
+                assert len(sample) < 2
+                if len(sample) == 1: 
+                    sety = [k for k, v in sets.items() if sample[0] in v]
+                    assert len(sety)==1
+                    sample_from_sets = sets[sety[0]]
+            rates_dict = {k : v for k, v in rates_dict.items() if k in sample_from_sets}
+        
+        vvs = sorted(rates_dict.items(),reverse = True, key = lambda i: i[1])
+        vvs = vvs[:config['binning']['bin_mapping_libs']]
+        vvs = [v for v in vvs if v[1] > config['binning']['bin_map_min']]
+        for v in vvs:
+            call("touch {path}/mapping/bams/{sample}.ph".format(path = wildcards.path, sample=v) , shell = True)
+#        with open(output.sample_list, "w") as handle:
+#            handle.writelines([ v[0] + "," + v[1] + "\n" for v in vvs ])
+    
+
+rule bbmap_binning_samples:
+    input : phs = dynamic("{path}/mapping/bams/{sample}.bam")
+    output : "{path}/mapping/binmap_table.tsv",
+    threads : 20
     shell : """
-    jgi_summarize_bam_contig_depths --outputDepth {input.path}/binmap_table.tsv  --pairedContigs {input.path}/binpaired_contigs.tsv {input.bams}
+#    jgi_summarize_bam_contig_depths --outputDepth {input.path}/binmap_table.tsv  --pairedContigs {input.path}/binpaired_contigs.tsv {input.bams}
     """
 
 
 rule bbmap_diagnostic:
-    input : ref_path = "{path}/mapping/",
-            libs = all_clean_libs
-    output : table = "{path}/mapping/mapping_rates.txt",
+    input : ref_path = "{path}/mapping",
+            libs = all_clean_libs,
+            refd = "{path}/mapping/ref.ed"
+    output : table = "{path}/mapping/mapping_rates.txt"
     threads : 20
     run :
         import pandas
@@ -120,7 +134,7 @@ rule bbmap_diagnostic:
             rev = fwd.replace("fwd.fastq.gz", "rev.fastq.gz")
             print("echo mapping {sample} to {ref}".format(sample = sample, ref = input.ref_path))
             bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out=/dev/null reads={reads} path={ref}"
-            process = Popen(bb_string.format(fwd = fwd, rev = rev, threads = threads, ref = input.ref_path, reads = config['mapping']['diagnostic']['reads']), shell = True)
+            process = Popen(bb_string.format(fwd = fwd, rev = rev, threads = threads, ref = input.ref_path, reads = config['mapping']['diagnostic']['reads']), shell = True, stderr = PIPE)
             out, err = process.communicate()
             out_dat = [l for l in err.decode().split("\n") ]
             raw_map = sum([float(l.split()[1][:-1]) for l in out_dat if l.startswith("mapped:")])/2
@@ -129,26 +143,4 @@ rule bbmap_diagnostic:
             'raw_map' : raw_map,
             'mated_map' : mated_map
             }
-       pandas.DataFrame(out_dict, orient = "index").to_csv(output.table)
-       """
-        module load bioinfo-tools
-        module load bbmap
-        module load samtools
-
-        home=`pwd`
-        cd {wildcards.path}/mapping
-
-        echo $'sample\tmated\tfwd\trev' > $home/{output}
-
-        for s in `echo """ + " ".join(all_samples()) + """ | tr ' ' "\n"`
-        do
-            echo mapping $s to {wildcards.path}
-            base={params.home}/$s/reads/trimmomatic/$s
-            bbmap.sh  in=${{base}}_1P.fastq.gz in2=${{base}}_2P.fastq.gz threads={threads} out=/dev/null reads={params.reads} 2> tmp
-
-echo -n $s $'\t' >>  $home/{output}
-            cat tmp | grep -E "mated|mapped" | cut -f2  | tr -d ' ' | tr -d % | tr '\n'  '\t' >>  $home/{output}
-            echo >> $home/{output}
-            rm tmp
-        done
-    """
+        pandas.DataFrame.from_dict(out_dict, orient = "index").to_csv(output.table)
