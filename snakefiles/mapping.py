@@ -30,10 +30,6 @@ def all_bams(wildcards):
     return [pjoin(path,s + ".bam") for s in samples]
 
 
-def all_bin_samples(wildcards):
-    with open(pjoin(wildcards.path), "/mapping/bined_samples.txt") as handle:
-        return [l.split(",")[0] for l in handle]
-
 def all_clean_libs(wildcards):
     files = os.listdir(config['general']['raw_folder'])
     fwds = list({"1000_processed_reads/{sample}/reads/fwd.fastq.gz".format(sample = f.split("_")[0]) for f in files })
@@ -51,7 +47,7 @@ rule bbmap_index:
 
 rule sample_wise_bbmap :
     input : index = "{path}/mapping/ref.ed",
-            ref_path = "{path}/mapping/",
+            ref_path = "{path}/mapping",
             fwd = "1000_processed_reads/{sample}/reads/fwd.fastq.gz",
             rev = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
     output : bam = "{path}/mapping/bams/{sample}.bam",
@@ -67,8 +63,7 @@ rule sample_wise_bbmap :
         call("sambamba flagstat -t {threads} {tdir}/{samp}_sorted.bam > {wdup}".format(threads = threads, samp = wildcards.sample, wdup = output.wdups_stats, tdir = config['general']['temp_dir']), shell=True)
         call("samtools rmdup  {tdir}/{samp}_sorted.bam {tdir}/{samp}.bam 2> /dev/null".format(samp = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
         call("samtools index {tdir}/{sample}.bam". format(sample = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
-        call("sambamba flagstat  -t {threads} {tdir}/{samp}.bam > {stats}".format(threads = threads, samp = wildcards.sample, stats = output.stats, tdir = config['general']['temp_dir']), shell = True)        
-        os.remove("rm {tdir}/{sample}.sam {tdir}/{sample}_sorted.bam".format(sample = wildcards.sample, tdir = config['general']['temp_dir']))
+        call("sambamba flagstat  -t {threads} {tdir}/{samp}.bam > {stats}".format(threads = threads, samp = wildcards.sample, stats = output.stats, tdir = config['general']['temp_dir']), shell = True)
         for f in os.listdir(config['general']['temp_dir']):
             if f.startswith(wildcards.sample + ".bam"):
                   shutil.move(pjoin(config['general']['temp_dir'], f), os.path.dirname(output.bam))
@@ -109,16 +104,6 @@ f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
             call("touch {path}/mapping/bams/{sample}.ph".format(path = wildcards.path, sample=v) , shell = True)
 #        with open(output.sample_list, "w") as handle:
 #            handle.writelines([ v[0] + "," + v[1] + "\n" for v in vvs ])
-    
-
-rule bbmap_binning_samples:
-    input : phs = dynamic("{path}/mapping/bams/{sample}.bam")
-    output : "{path}/mapping/binmap_table.tsv",
-    threads : 20
-    shell : """
-#    jgi_summarize_bam_contig_depths --outputDepth {input.path}/binmap_table.tsv  --pairedContigs {input.path}/binpaired_contigs.tsv {input.bams}
-    """
-
 
 rule bbmap_diagnostic:
     input : ref_path = "{path}/mapping",
