@@ -1,3 +1,9 @@
+from os.path import join as pjoin
+import os
+from subprocess import Popen, PIPE, call
+
+shell.prefix("module load bioinfo-tools BioPerl; ")
+
 rule phylophlan :
     params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
              phylophlan_exe = "phylophlan.py",
@@ -21,12 +27,26 @@ rule phylophlan :
     IFS=$"\n"; for r in `cat data/ppafull.tax.txt`; do id=`echo ${{r}} | cut -f1`; tax=`echo ${{r}} | cut -f2`; sed -i "s/${{id}}/${{id}}_${{tax}}/g" output/{wildcards.type}{wildcards.name}/{wildcards.type}{wildcards.name}.tree.int.nwk; done; unset IFS
     cp output/{wildcards.type}{wildcards.name}/{wildcards.type}{wildcards.name}.tree.int.nwk $DD/{output}
     """
-
+prokka --outdir /scratch/soda-23-Unterer-Stinkersee_megahit_metabat_bin-2127/soda-23-Unterer-Stinkersee_megahit_metabat_bin-2127   --force --prefix soda-23-Unterer-Stinkersee_megahit_metabat_bin-2127 --locustag soda-23-Unterer-Stinkersee_megahit_metabat_bin-2127 --cpus 20 1000_processed_reads/soda-23-Unterer-Stinkersee/assemblies/megahit/binning/metabat/bins/bin_2127.fasta
 
 rule annotate_all_mags :
-    input : "{path}/{name}/{assembler}/MAGs/metabat_{name}-unbinned.fa"
-    output : "{path}/{name}/{assembler}/MAGs/metabat_{name}_unbinned/{name}_unbinned.checkm"
-    threads : THREADS
+    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins"
+    output : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins"
+    threads = 20
+    run :
+        bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
+        os.makedirs(output.folder)
+
+        prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins}"
+
+        for b in bins:
+            meta = "--metagenome" if b == "bin-unbinned.fasta" else ""
+            b_name = b[:-6].replace("_", "-" )
+            prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
+            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = "", prefix = prefix, threads = threads, bins = pjoin(input.folder, b) )
+
+
+
     shell : """
 
     input_dir=`dirname {input}`

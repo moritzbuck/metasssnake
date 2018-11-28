@@ -4,10 +4,10 @@ import os
 import shutil
 
 rule clean_metabat:
-    input : 
+    input :
         clusters = "{path}/binning/metabat/clusters.txt",
         assembly = "{path}/assembly.fna",
-    output : 
+    output :
         folder = "{path}/binning/metabat/bins"
     run :
         import os
@@ -35,12 +35,12 @@ rule clean_metabat:
                 b_id = str(c).zfill(zero)
                 seq_count[c] += 1
                 pos = str(seq_count[c]).zfill(seq_zeros[c]) + "/" + str(seq_tot[c])
-                s.id = "bin_" + b_id + ":" + pos
+                s.id = "bin-" + b_id + ":" + pos
                 s.description = ""
                 seqs[c] += [s]
         os.makedirs(output.folder)
         for k, v in seqs.items():
-            SeqIO.write(v, pjoin(output.folder, "bin_" + str(k).zfill(zero) + ".fasta"), "fasta")
+            SeqIO.write(v, pjoin(output.folder, "bin-" + str(k).zfill(zero) + ".fasta"), "fasta")
 
 
 
