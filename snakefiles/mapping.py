@@ -70,11 +70,11 @@ rule sample_wise_bbmap :
 
 
 rule bbmap_all_samples:
-    input : "{path}/mapping/ref.ed", "{path}/mapping/", all_bams
+    input : "{path}/mapping/ref.ed", all_bams
     output : "{path}/mapping/map_table.tsv", "{path}/mapping/paired_contigs.tsv"
     threads : 20
     shell : """
-    jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  {input[1]}/bams/*.bam
+    jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  `dirname {input[1]}`/*.bam
     """
 
 rule bbmap_bining_map:

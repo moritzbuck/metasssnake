@@ -4,9 +4,11 @@ import os
 import shutil
 
 rule clean_metabat:
-    input : clusters = "{path}/binning/metabat/clusters.txt",
-            assembly = "{path}/assembly.fna"
-    output : folder = directory("{path}/binning/metabat/bins")
+    input : 
+        clusters = "{path}/binning/metabat/clusters.txt",
+        assembly = "{path}/assembly.fna",
+    output : 
+        folder = "{path}/binning/metabat/bins"
     run :
         import os
         from Bio import SeqIO
@@ -14,28 +16,32 @@ rule clean_metabat:
         from tqdm import tqdm
 
         with open(input.clusters) as handle :
-            clsts = { l.split()[0] : l[1] for l in handle}
-        map = { c  : i  for i,c in enumerate(set(clsts.values())) if c != 0 }
-        map[0] = "unbinned"
-        clsts = {k : map[v] for k, v in clsts.items()}
-        zero = len(str(len(map)))
-        seqs = {c : [] for c in for clsts.values()}
-        seq_count = {c : 0 for c in for clsts.values()}
-        seq_tot = {c : clst.values().count(c) for c in for clsts.values()}
-        seq_zeros = {c : len(str(clst.values().count(c))) for c in for clsts.values()}
-
+            clsts = { l.split()[0] : l.split()[1] for l in handle}
+        bad_ids = set(clsts.values())
+        mapy = { c  : i  for i,c in tqdm(enumerate(bad_ids)) if c != 0 }
+        mapy['0'] = "unbinned"
+        clsts = {k : mapy[v] for k, v in clsts.items()}
+        vvs = list(clsts.values())
+        zero = len(str(len(mapy)))
+        seqs = {c : [] for c in clsts.values() }
+        seq_count = {c : 0 for c in clsts.values()}
+        seq_tot = {c : vvs.count(c) for c in tqdm(set(vvs))}
+        seq_zeros = {c : len(str(vvs.count(c))) for c in tqdm(set(vvs))}
+#        print(list(clsts.keys())[0:10])
         for s in tqdm(SeqIO.parse(input.assembly, "fasta")):
             nam = s.id.split()[0]
-            c = clsts[nam]
-            b_id = str(c).zfill(zero)
-            seq_count[c] += 1
-            pos = str(seq_count[c]).zfill(seq_zeros[c]) + "/" + str(seq_tot[c])
-            s.id = "bin_" + b_id + ":" + pos
-            s.description = ""
-            seqs[c] += [seq_rec]
+            if nam in clsts:
+                c = clsts[nam]
+                b_id = str(c).zfill(zero)
+                seq_count[c] += 1
+                pos = str(seq_count[c]).zfill(seq_zeros[c]) + "/" + str(seq_tot[c])
+                s.id = "bin_" + b_id + ":" + pos
+                s.description = ""
+                seqs[c] += [s]
+        os.makedirs(output.folder)
+        for k, v in seqs.items():
+            SeqIO.write(v, pjoin(output.folder, "bin_" + str(k).zfill(zero) + ".fasta"), "fasta")
 
-        for k, v in seqs:
-            SeqIO.write(v, pjoin(output.folder, "bin_" + str(k).zfill(zero) + ".fasta", "fasta")
 
 
 
