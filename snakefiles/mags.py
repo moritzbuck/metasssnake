@@ -1,6 +1,9 @@
 from os.path import join as pjoin
 import os
 from subprocess import Popen, PIPE, call
+from Bio import SeqIO
+from tqdm import tqdm
+from pandas import DataFrame
 
 shell.prefix("module load bioinfo-tools BioPerl; ")
 
@@ -11,7 +14,7 @@ rule phylophlan :
              default_genomes = "/home/moritz/repos/github/phylophlan/input/default_genomes"
     input : path = "{path}/{name}/bins/{assembler}/{type}MAGs", annotated = "{path}/{name}/bins/{assembler}/annotated"
     output : "{path}/{name}/bins/{assembler}/{type}{name}.tree"
-    threads : THREADS
+    threads : 20
     shell : """
     DD=`pwd`
     mkdir {params.phylophlan_path}/input/{wildcards.type}{wildcards.name}
@@ -70,15 +73,12 @@ def mag_stat(folder, bin_head) :
 rule annotate_all_mags :
     input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins"
     output : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
-             stats = "{path}/{name}/{assembler}/MAGs/{name}.magstats"
-    threads = 20
+             stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
+    threads : 20
     run :
-        from Bio import SeqIO
-        from tqdm import tqdm
-        from pandas import DataFrame
-
         bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
-        os.makedirs(output.folder)
+        if not os.path.exists(output.folder):
+            os.makedirs(output.folder)
 
         prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins}"
         checkm_line = "checkm lineage_wf -t {threads} -x fna {temp_out}/{prefix} {temp_out}/{prefix}/data > {temp_out}/{prefix}/checkm.txt"
@@ -89,11 +89,13 @@ rule annotate_all_mags :
             b_name = b[:-6].replace("_", "-" )
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
             prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = threads, bins = pjoin(input.folder, b) )
+
             call(prok, shell = True)
             if meta == "":
                 call(checkm_line.format(threads= threads, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
-            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), ouput.folder)
-            shutil.rmtree(pjoin(output.folder, prefix, "data"))
+                shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
+            
+            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
             out_dict[prefix] = mag_stat(pjoin(output.folder, prefix), prefix)
         DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
 

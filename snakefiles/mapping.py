@@ -8,21 +8,28 @@ shell.prefix("module load bioinfo-tools bbmap samtools; ")
 
 def all_samples(wildcards):
         import pandas 
+        sets = []
         if config['general'].get('exp_json'):
             with open(config['general'].get('exp_json')) as handle:
                 sets = json.load(handle)
-                sample = [ f for 
-f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
+                sample = [ f for f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
                 assert len(sample) < 2
                 if len(sample) == 1: 
                     sety = [k for k, v in sets.items() if sample[0] in v]
-                    assert len(sety)==1
                     sample_from_sets = sets[sety[0]]
-            return sample_from_sets
-        else :
-            path = "1000_processed_reads/"
-            samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
-            return samples
+                    return sample_from_sets
+        
+        coas_sets = [f.split(".")[0] for f in os.listdir("9000_metadata/9100_samplesets/")]
+        coas = [ f for f in wildcards.path.split("/") if f in  coas_sets ]
+        if len(coas) == 1:
+                with open(pjoin("9000_metadata/9100_samplesets/", coas[0] + '.txt')) as handle:
+                     samples_from_sets = [l[:-1] for l in handle]
+                return samples_from_sets
+
+        path = "1000_processed_reads/"
+        samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
+        return samples
+        
 
 def all_bams(wildcards):
     samples = all_samples(wildcards)
@@ -53,7 +60,7 @@ rule sample_wise_bbmap :
     output : bam = "{path}/mapping/bams/{sample}.bam",
              wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
              stats = "{path}/mapping/bams/{sample}.stats",
-    threads : 20
+    threads :4 
     run : 
         bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
@@ -75,7 +82,8 @@ rule bbmap_all_samples:
     threads : 20
     shell : """
     jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  `dirname {input[1]}`/*.bam
-    """
+    rm `dirname {input[1]}`/*.bam    
+"""
 
 rule bbmap_bining_map:
     input : diag_map = "{path}/mapping/mapping_rates.txt"
