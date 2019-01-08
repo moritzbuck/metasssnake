@@ -65,13 +65,15 @@ rule sample_wise_bbmap :
         bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
         bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
-        call(bb_string.format(fwd = input.fwd, rev = input.rev, threads = threads, ref = input.ref_path, out = temp_bam, bams = bamsc), shell = True, stderr = PIPE)
+        call(bb_string.format(fwd = input.fwd, rev = input.rev, threads = threads, ref = input.ref_path, out = temp_bam, bams = bamsc), shell = True)
         call(bamsc, shell=True)
         call("sambamba flagstat -t {threads} {tdir}/{samp}_sorted.bam > {wdup}".format(threads = threads, samp = wildcards.sample, wdup = output.wdups_stats, tdir = config['general']['temp_dir']), shell=True)
         call("samtools rmdup  {tdir}/{samp}_sorted.bam {tdir}/{samp}.bam 2> /dev/null".format(samp = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
         call("samtools index {tdir}/{sample}.bam". format(sample = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
         call("sambamba flagstat  -t {threads} {tdir}/{samp}.bam > {stats}".format(threads = threads, samp = wildcards.sample, stats = output.stats, tdir = config['general']['temp_dir']), shell = True)
         for f in os.listdir(config['general']['temp_dir']):
+            if os.path.exists(pjoin(os.path.dirname(output.bam), f)):
+                  os.remove(pjoin(os.path.dirname(output.bam),f))
             if f.startswith(wildcards.sample + ".bam"):
                   shutil.move(pjoin(config['general']['temp_dir'], f), os.path.dirname(output.bam))
 
