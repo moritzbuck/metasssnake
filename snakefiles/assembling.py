@@ -26,6 +26,7 @@ def get_libs(wildcards):
 
 rule assemble:
     params : temp_folder = pjoin(config['general']['temp_dir'], "{sample}", "{assembler}")
+
     input : unpack(get_libs)
     output : assembly = "{path}/{sample}/assemblies/{assembler}/assembly.fna",
              folder = "{path}/{sample}/assemblies/{assembler}/data"
@@ -43,16 +44,16 @@ rule assemble:
 
         if wildcards.assembler == "megahit":
             call("megahit -m 0.8 -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
-            shutil.rmtree(join(params.temp_folder, "data", "intermediate_contigs"))
+            shutil.rmtree(pjoin(params.temp_folder, "data", "intermediate_contigs"))
             shutil.move(pjoin(params.temp_folder, "data"), output.folder)
             os.symlink(pjoin(os.getcwd(),output.folder, "megahit.contigs.fa"), output.assembly)
 
         elif wildcards.assembler == "spades":
             call("spades.py --meta  -1 {fwd} -2 {rev} -s {unp} -t {threads} -o {outfold}".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = params.temp_folder), shell = True)
 #            shutil.rmtree(pjoin(params.temp_folder, intermediate_contigs))
-            shutil.rmtree(join(params.temp_folder, "data", "K21"))
-            shutil.rmtree(join(params.temp_folder, "data", "K33"))
-            shutil.rmtree(join(params.temp_folder, "data", "K55"))
+            shutil.rmtree(pjoin(params.temp_folder, "K21"))
+            shutil.rmtree(pjoin(params.temp_folder, "K33"))
+            shutil.rmtree(pjoin(params.temp_folder, "K55"))
             shutil.move(params.temp_folder, output.folder)
             os.symlink(pjoin(os.getcwd(),output.folder, "scaffolds.fasta"), output.assembly)
         else :

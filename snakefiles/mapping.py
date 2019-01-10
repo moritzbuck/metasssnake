@@ -5,22 +5,38 @@ import shutil
 from subprocess import Popen, PIPE
 
 def all_samples(wildcards):
+<<<<<<< HEAD
         import pandas
         if config['general'].get('exp_json'):
             with open(config['general'].get('exp_json')) as handle:
                 sets = json.load(handle)
                 sample = [ f for
 f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
+=======
+        import pandas
+        sets = []
+        if config['general'].get('exp_json'):
+            with open(config['general'].get('exp_json')) as handle:
+                sets = json.load(handle)
+                sample = [ f for f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
+>>>>>>> 33dce19c60f77821f5da2489827ea65db8c55969
                 assert len(sample) < 2
                 if len(sample) == 1:
                     sety = [k for k, v in sets.items() if sample[0] in v]
-                    assert len(sety)==1
                     sample_from_sets = sets[sety[0]]
-            return sample_from_sets
-        else :
-            path = "1000_processed_reads/"
-            samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
-            return samples
+                    return sample_from_sets
+
+        coas_sets = [f.split(".")[0] for f in os.listdir("9000_metadata/9100_samplesets/")]
+        coas = [ f for f in wildcards.path.split("/") if f in  coas_sets ]
+        if len(coas) == 1:
+                with open(pjoin("9000_metadata/9100_samplesets/", coas[0] + '.txt')) as handle:
+                     samples_from_sets = [l[:-1] for l in handle]
+                return samples_from_sets
+
+        path = "1000_processed_reads/"
+        samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
+        return samples
+
 
 def all_bams(wildcards):
     samples = all_samples(wildcards)
@@ -56,13 +72,15 @@ rule sample_wise_bbmap :
         bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
         bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
-        call(bb_string.format(fwd = input.fwd, rev = input.rev, threads = threads, ref = input.ref_path, out = temp_bam, bams = bamsc), shell = True, stderr = PIPE)
+        call(bb_string.format(fwd = input.fwd, rev = input.rev, threads = threads, ref = input.ref_path, out = temp_bam, bams = bamsc), shell = True)
         call(bamsc, shell=True)
         call("sambamba flagstat -t {threads} {tdir}/{samp}_sorted.bam > {wdup}".format(threads = threads, samp = wildcards.sample, wdup = output.wdups_stats, tdir = config['general']['temp_dir']), shell=True)
         call("samtools rmdup  {tdir}/{samp}_sorted.bam {tdir}/{samp}.bam 2> /dev/null".format(samp = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
         call("samtools index {tdir}/{sample}.bam". format(sample = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
         call("sambamba flagstat  -t {threads} {tdir}/{samp}.bam > {stats}".format(threads = threads, samp = wildcards.sample, stats = output.stats, tdir = config['general']['temp_dir']), shell = True)
         for f in os.listdir(config['general']['temp_dir']):
+            if os.path.exists(pjoin(os.path.dirname(output.bam), f)):
+                  os.remove(pjoin(os.path.dirname(output.bam),f))
             if f.startswith(wildcards.sample + ".bam"):
                   shutil.move(pjoin(config['general']['temp_dir'], f), os.path.dirname(output.bam))
 
@@ -73,7 +91,8 @@ rule bbmap_all_samples:
     threads : 20
     shell : """
     jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  `dirname {input[1]}`/*.bam
-    """
+    rm `dirname {input[1]}`/*.bam
+"""
 
 rule bbmap_bining_map:
     input : diag_map = "{path}/mapping/mapping_rates.txt"

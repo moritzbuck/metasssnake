@@ -50,7 +50,7 @@ rule metabat :
             mapping = "{path}/assembly/mapping/map_table.tsv"
     output : file = "{path}/binning/metabat/clusters.txt"
     run :
-        metabat_str = "metabat2 --maxP {maxP} --minS {minS} -m {min_len}  -s {min_bin_size} -i  {ass} -o {output} -a {mapping}  --saveCls  --unbinned -t {threads}"
+        metabat_str = "metabat2 --maxP {maxP} --minS {minS} -m {min_len}  -s {min_bin_size} -i  {ass} -o {output} -a {mapping}  --saveCls  --unbinned -t {threads} --noBinOut"
         call(metabat_str.format(**config['binning']['metabat'], ass = input.assembly, output = output.file, mapping = input.mapping, threads = threads), shell = True)
 
 rule concoct :
