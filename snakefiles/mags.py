@@ -2,7 +2,6 @@ from os.path import join as pjoin
 import os
 from subprocess import Popen, PIPE, call
 
-shell.prefix("module load bioinfo-tools BioPerl; ")
 
 rule phylophlan :
     params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
@@ -92,8 +91,8 @@ rule annotate_all_mags :
             call(prok, shell = True)
             if meta == "":
                 call(checkm_line.format(threads= threads, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
+                shutil.rmtree(pjoin(output.folder, prefix, "data"))
             shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), ouput.folder)
-            shutil.rmtree(pjoin(output.folder, prefix, "data"))
             out_dict[prefix] = mag_stat(pjoin(output.folder, prefix), prefix)
         DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
 

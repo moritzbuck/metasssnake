@@ -4,17 +4,15 @@ import os
 import shutil
 from subprocess import Popen, PIPE
 
-shell.prefix("module load bioinfo-tools bbmap samtools; ")
-
 def all_samples(wildcards):
-        import pandas 
+        import pandas
         if config['general'].get('exp_json'):
             with open(config['general'].get('exp_json')) as handle:
                 sets = json.load(handle)
-                sample = [ f for 
+                sample = [ f for
 f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
                 assert len(sample) < 2
-                if len(sample) == 1: 
+                if len(sample) == 1:
                     sety = [k for k, v in sets.items() if sample[0] in v]
                     assert len(sety)==1
                     sample_from_sets = sets[sety[0]]
@@ -54,7 +52,7 @@ rule sample_wise_bbmap :
              wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
              stats = "{path}/mapping/bams/{sample}.stats",
     threads : 20
-    run : 
+    run :
         bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
         bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
@@ -82,21 +80,21 @@ rule bbmap_bining_map:
     output : sample_list = dynamic("{path}/mapping/bams/{sample}.ph")
     threads : 1
     run :
-        import pandas 
+        import pandas
         rates_dict = {k : v['raw_map'] for k,v in pandas.read_csv(input.diag_map, index_col=0).transpose().to_dict()
 .items()}
         if config['general'].get('exp_json'):
             with open(config['base'].get('exp_json')) as handle:
                 sets = json.load(handle)
-                sample = [ f for 
+                sample = [ f for
 f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
                 assert len(sample) < 2
-                if len(sample) == 1: 
+                if len(sample) == 1:
                     sety = [k for k, v in sets.items() if sample[0] in v]
                     assert len(sety)==1
                     sample_from_sets = sets[sety[0]]
             rates_dict = {k : v for k, v in rates_dict.items() if k in sample_from_sets}
-        
+
         vvs = sorted(rates_dict.items(),reverse = True, key = lambda i: i[1])
         vvs = vvs[:config['binning']['bin_mapping_libs']]
         vvs = [v for v in vvs if v[1] > config['binning']['bin_map_min']]
