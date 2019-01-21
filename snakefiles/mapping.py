@@ -5,18 +5,18 @@ import shutil
 from subprocess import Popen, PIPE
 
 def all_samples(wildcards):
-        import pandas 
+        import pandas
         sets = []
         if config['general'].get('exp_json'):
             with open(config['general'].get('exp_json')) as handle:
                 sets = json.load(handle)
                 sample = [ f for f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
                 assert len(sample) < 2
-                if len(sample) == 1: 
+                if len(sample) == 1:
                     sety = [k for k, v in sets.items() if sample[0] in v]
                     sample_from_sets = sets[sety[0]]
                     return sample_from_sets
-        
+
         coas_sets = [f.split(".")[0] for f in os.listdir("9000_metadata/9100_samplesets/")]
         coas = [ f for f in wildcards.path.split("/") if f in  coas_sets ]
         if len(coas) == 1:
@@ -27,7 +27,7 @@ def all_samples(wildcards):
         path = "1000_processed_reads/"
         samples = [d for d in os.listdir(path) if os.path.isdir(pjoin(path,d)) ]
         return samples
-        
+
 
 def all_bams(wildcards):
     samples = all_samples(wildcards)
@@ -82,7 +82,7 @@ rule bbmap_all_samples:
     threads : 20
     shell : """
     jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  `dirname {input[1]}`/*.bam
-    rm `dirname {input[1]}`/*.bam    
+    rm `dirname {input[1]}`/*.bam
 """
 
 rule bbmap_bining_map:
@@ -90,21 +90,21 @@ rule bbmap_bining_map:
     output : sample_list = dynamic("{path}/mapping/bams/{sample}.ph")
     threads : 1
     run :
-        import pandas 
+        import pandas
         rates_dict = {k : v['raw_map'] for k,v in pandas.read_csv(input.diag_map, index_col=0).transpose().to_dict()
 .items()}
         if config['general'].get('exp_json'):
             with open(config['base'].get('exp_json')) as handle:
                 sets = json.load(handle)
-                sample = [ f for 
+                sample = [ f for
 f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
                 assert len(sample) < 2
-                if len(sample) == 1: 
+                if len(sample) == 1:
                     sety = [k for k, v in sets.items() if sample[0] in v]
                     assert len(sety)==1
                     sample_from_sets = sets[sety[0]]
             rates_dict = {k : v for k, v in rates_dict.items() if k in sample_from_sets}
-        
+
         vvs = sorted(rates_dict.items(),reverse = True, key = lambda i: i[1])
         vvs = vvs[:config['binning']['bin_mapping_libs']]
         vvs = [v for v in vvs if v[1] > config['binning']['bin_map_min']]

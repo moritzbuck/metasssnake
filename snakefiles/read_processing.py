@@ -44,7 +44,7 @@ rule trimmomatic:
              temp_folder = temp_dir
     input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
              rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
-    threads : 20 
+    threads : 20
     output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
              read2 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/rev_paired.fastq.gz",
              read1U = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_unpaired.fastq.gz",
