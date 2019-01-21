@@ -38,7 +38,8 @@ rule clean_metabat:
                 s.id = "bin-" + b_id + ":" + pos
                 s.description = ""
                 seqs[c] += [s]
-        os.makedirs(output.folder)
+        if not os.path.exists(output.folder):
+            os.makedirs(output.folder)
         for k, v in seqs.items():
             SeqIO.write(v, pjoin(output.folder, "bin-" + str(k).zfill(zero) + ".fasta"), "fasta")
 

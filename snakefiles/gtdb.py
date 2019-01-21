@@ -6,7 +6,10 @@ import pandas
 import hashlib
 import numpy
 
+shell.prefix("module load bioinfo-tools bbmap samtools perl_modules BioPerl prokka; ")
+
 metasssnake_path = pjoin(os.environ['HOME'], "repos/moritz/metasssnake/")
+config['general']['temp_dir'] = os.environ['SNIC_TMP']
 
 if not os.path.exists(config['gtdb']['download']['local']):
     call("wget " + config['gtdb']['download']['remote'] + " -O " + config['gtdb']['download']['local'], shell=True)
@@ -61,7 +64,7 @@ rule download:
 
 
         if wildcards.gtdb_id.startswith("UBA"):
-            dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
+            dl_folder = params.temp_folder
             if not os.path.exists(dl_folder):
                 os.makedirs(dl_folder)
 
@@ -70,7 +73,7 @@ rule download:
             call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, wildcards.gtdb_id + ".fsa")), shell = True)
             genomics =  wildcards.gtdb_id + ".fna"
             proteomics =  wildcards.gtdb_id + ".faa"
-            gbks =  wildcards.gtdb_id + ".gbk"
+            gbks =  wildcards.gtdb_id + ".gbf"
             cdss =  wildcards.gtdb_id + ".ffn"
 
             shutil.copy(pjoin(dl_folder, genomics), output.genome)
@@ -90,14 +93,21 @@ rule download:
 
                 if ncbi_id in refseq.index:
                     ncbi_data = refseq.loc[ncbi_id].to_dict()
-                else :
+                elif ncbi_id in genbank.index :
                     ncbi_data = genbank.loc[ncbi_id].to_dict()
-                    metadata.update(ncbi_data)
+                else :
+                    call("touch " + output.genome, shell=True)
+                    call("touch " + output.proteom, shell=True)
+                    call("touch " + output.gbk, shell=True)
+                    call("touch " + output.cdss, shell=True)
+                    sys.exit()
 
-                dl_folder = pjoin(config['general']['temp_dir'], wildcards.gtdb_id)
+                metadata.update(ncbi_data)
+
+                dl_folder = params.temp_folder 
                 if not os.path.exists(dl_folder):
                     os.makedirs(dl_folder)
-
+ 
                 call("wget -r -nd " + metadata['ftp_path'] + " -P " + dl_folder + " 2> /dev/null ", shell=True)
 
                 all_files = os.listdir(dl_folder)
@@ -128,7 +138,7 @@ rule download:
                 call(exe_str.format(out_dir = dl_folder, prefix = wildcards.gtdb_id, threads = threads, infile = pjoin(dl_folder, genomics[:-3])), shell = True)
                 genomics =  wildcards.gtdb_id + ".fna"
                 proteomics =  wildcards.gtdb_id + ".faa"
-                gbks =  wildcards.gtdb_id + ".gbk"
+                gbks =  wildcards.gtdb_id + ".gbf"
                 cdss =  wildcards.gtdb_id + ".ffn"
 
                 shutil.copy(pjoin(dl_folder, genomics), output.genome)

@@ -43,7 +43,7 @@ rule assemble:
         call(unzip_cmd.format(threads = threads, files = " ".join(input.unp) if type(input.unp) == list else input.unp , temp_fold = unp), shell = True)
 
         if wildcards.assembler == "megahit":
-            call("megahit -m 0.8 -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
+            call("megahit -m 0.7 -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
             shutil.rmtree(pjoin(params.temp_folder, "data", "intermediate_contigs"))
             shutil.move(pjoin(params.temp_folder, "data"), output.folder)
             os.symlink(pjoin(os.getcwd(),output.folder, "megahit.contigs.fa"), output.assembly)

@@ -4,8 +4,6 @@ import os
 import shutil
 from subprocess import Popen, PIPE
 
-shell.prefix("module load bioinfo-tools bbmap samtools; ")
-
 def all_samples(wildcards):
         import pandas 
         sets = []
@@ -60,7 +58,7 @@ rule sample_wise_bbmap :
     output : bam = "{path}/mapping/bams/{sample}.bam",
              wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
              stats = "{path}/mapping/bams/{sample}.stats",
-    threads :4 
+    threads :  5
     run : 
         bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")

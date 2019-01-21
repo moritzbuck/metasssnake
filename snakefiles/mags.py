@@ -5,7 +5,7 @@ from Bio import SeqIO
 from tqdm import tqdm
 from pandas import DataFrame
 
-shell.prefix("module load bioinfo-tools BioPerl; ")
+shell.prefix("module load bioinfo-tools bbmap samtools perl_modules BioPerl prokka; ")
 
 rule phylophlan :
     params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
