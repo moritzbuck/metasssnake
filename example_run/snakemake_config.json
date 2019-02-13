@@ -1,0 +1,61 @@
+{
+  "general" : {
+    "home" : "/home/moritz/people/0023_anoxicencyclo/",
+    "raw_folder" : "/home/moritz/people/0023_anoxicencyclo/0000_raws/0100_reads/genomic2/",
+    "temp_dir" : "/tmp/",
+    "threads" : 20,
+    "exp_json" : "/home/moritz/people/0023_anoxicencyclo/8000_scripts/exp_sets.json" 
+  },
+  "read_processing" : {
+    "trimmomatic" : {
+        "trimmomatic_home" : "/sw/apps/bioinfo/trimmomatic/0.36/rackham/",
+      	"options" : "-phred33",
+        "processing_options" : "ILLUMINACLIP:/sw/apps/bioinfo/trimmomatic/0.36/rackham//adapters/TruSeq3-PE.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:36",
+        "java_cmd" : "java",
+        "jar_file" : "/sw/apps/bioinfo/trimmomatic/0.36/rackham/trimmomatic.jar",
+        "java_vm_mem" : "128g"
+    },
+    "mash" : {
+      "kmer" : 21,
+      "hashes" : 1000
+    },
+    "kaiju" : {
+      "db_path" : "/crex2/proj/sllstore2017039/2017_MG_course/data/kaijudb/kaiju_nr_db/",
+      "db" :  "kaijudb.fmi"
+    },
+    "matam" : {
+      "db_path" : "/home/moritz/dbs/matam/",
+      "max_mem" : 100000
+    }
+  },
+  "gtdb" : {
+    "download" : {
+      "remote" : "https://data.ace.uq.edu.au/public/gtdb/release86/bac_metadata_r86.tsv",
+      "local" : "/home/moritzbuck/data/bac_metadata_r86.tsv",
+      "genbank_remote" : "ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt",
+      "refseq_remote" :"ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt",
+      "genbank_local" : "/home/moritzbuck/data/assembly_summary_genbank.txt",
+      "refseq_local" : "/home/moritzbuck/data/assembly_summary_refseq.txt",
+      "retries" : 5
+    },
+    "hmmer" : {
+      "pfams_db" : "/scratch/Pfam-A.hmm"
+    }
+  },
+  "mapping" : {
+      "diagnostic" :  {
+	  "reads" : 100000
+      }
+  },
+  "binning" : {
+    "metabat" : {
+	"min_len" : 1500,
+	"min_bin_size" : 10000,
+	"maxP" : 93,
+	"minS" : 50
+    }
+  },
+  "assembling" : {
+      "filter_cutoff" : 1500 
+  }
+}

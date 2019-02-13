@@ -1,0 +1,43 @@
+{
+    "__default__" :
+    {
+        "time" : "10-00:00:00",
+        "n" : 20,
+	"M" : "rackham",
+	"part" : "core",
+	"C" : "mem128GB"
+    },
+    "assemble" :
+    {
+        "time" : "12-00:00:00",
+        "n" : 16,
+	"M" : "snowy",
+	"part" : "node",
+	"C" : "mem512GB"
+    },
+    "filter_assembly" :
+    {
+        "n" : 1,
+	"time" : "00:30:00",
+    },
+    "merge_libs" :
+    {
+        "n" : 20
+    },
+    "bbmap_index" :
+    {
+	"n" : 20
+    },
+    "sample_wise_bbmap" :
+    {
+	"n" : 5
+    },
+    "clean_metabat" :
+    {
+	"n" : 4
+    },
+    "make_all" :
+    {
+	"n" : 1
+    }
+}
