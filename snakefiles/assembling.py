@@ -23,13 +23,29 @@ def get_libs(wildcards):
             'unp' : "1000_processed_reads/{sample}/reads/unp.fastq.gz".format(sample = wildcards.sample)}
         return output
 
+rule filter_assembly:
+    params : cutoff = config['assembling']['filter_cutoff']
+    input : assembly = "{path}/{sample}/assemblies/{assembler}/assembly.fna",
+    output : filtered_assembly = "{path}/{sample}/assemblies/{assembler}/filtered_assembly.fna",
+    threads : 1
+    run :
+        from Bio import SeqIO
+        out_contigs = []
+        count = 1
+        for s in SeqIO.parse(input.assembly, "fasta"):
+            if len(s.seq) >= params.cutoff:
+                s.id = "{type}_{assembler}_{sample}_{num:07}".format(type = "coass" if "1500_" in wildcards.path else "single", sample = wildcards.sample, assembler = wildcards.assembler, num = count)
+                s.description = ""
+                count += 1
+                out_contigs += [s]
+        SeqIO.write(out_contigs, output.filtered_assembly, "fasta")
+                
 
 rule assemble:
     params : temp_folder = pjoin(config['general']['temp_dir'], "{sample}", "{assembler}")
 
     input : unpack(get_libs)
     output : assembly = "{path}/{sample}/assemblies/{assembler}/assembly.fna",
-             folder = "{path}/{sample}/assemblies/{assembler}/data"
     threads : 20
     run :
         os.makedirs(params.temp_folder, exist_ok = True)
@@ -45,8 +61,8 @@ rule assemble:
         if wildcards.assembler == "megahit":
             call("megahit -m 0.7 -1 {fwd} -2 {rev} -r {unp} -t {threads} -o {outfold} --out-prefix megahit".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = pjoin(params.temp_folder, "data")), shell = True)
             shutil.rmtree(pjoin(params.temp_folder, "data", "intermediate_contigs"))
-            shutil.move(pjoin(params.temp_folder, "data"), output.folder)
-            os.symlink(pjoin(os.getcwd(),output.folder, "megahit.contigs.fa"), output.assembly)
+            shutil.move(pjoin(params.temp_folder, "data"), pjoin(os.path.dirname(output.assembly),"data"))
+            os.symlink(pjoin(os.getcwd(),pjoin(os.path.dirname(output.assembly),"data"), "megahit.contigs.fa"), output.assembly)
 
         elif wildcards.assembler == "spades":
             call("spades.py --meta  -1 {fwd} -2 {rev} -s {unp} -t {threads} -o {outfold}".format(fwd = fwd, rev = rev, unp = unp, threads = threads, outfold = params.temp_folder), shell = True)
@@ -54,8 +70,8 @@ rule assemble:
             shutil.rmtree(pjoin(params.temp_folder, "K21"))
             shutil.rmtree(pjoin(params.temp_folder, "K33"))
             shutil.rmtree(pjoin(params.temp_folder, "K55"))
-            shutil.move(params.temp_folder, output.folder)
-            os.symlink(pjoin(os.getcwd(),output.folder, "scaffolds.fasta"), output.assembly)
+            shutil.move(params.temp_folder, pjoin(os.path.dirname(output.assembly),"data") )
+            os.symlink(pjoin(os.getcwd(),pjoin(os.path.dirname(output.assembly),"data"), "scaffolds.fasta"), output.assembly)
         else :
             print("Not an accepted assembler")
             return "broken"

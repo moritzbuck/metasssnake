@@ -47,8 +47,8 @@ rule clean_metabat:
 
 
 rule metabat :
-    input : assembly = "{path}/assembly.fna",
-            mapping = "{path}/assembly/mapping/map_table.tsv"
+    input : assembly = "{path}/filtered_assembly.fna",
+            mapping = "{path}/filtered_assembly/mapping/map_table.tsv"
     output : file = "{path}/binning/metabat/clusters.txt"
     run :
         metabat_str = "metabat2 --maxP {maxP} --minS {minS} -m {min_len}  -s {min_bin_size} -i  {ass} -o {output} -a {mapping}  --saveCls  --unbinned -t {threads} --noBinOut"

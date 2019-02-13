@@ -7,7 +7,7 @@ temp_dir = os.environ['SNIC_TMP']
 
 
 def find_libs(wildcards):
-    raw_path = "0000_raws/"
+    raw_path = config['general']['raw_folder']
     libs = [f.split("_")[1] for f in os.listdir(raw_path) if f.startswith(wildcards.sample + "_") and "_R1" in f]
     return ["1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz".format(lib = l, sample = wildcards.sample) for l in libs]
 
@@ -42,8 +42,8 @@ rule trimmomatic:
              options = config["read_processing"]['trimmomatic']['options'],
              processing_options = config["read_processing"]['trimmomatic']['processing_options'],
              temp_folder = temp_dir
-    input :  fwd = "0000_raws/{sample}_{lib}_R1.fastq.gz",
-             rev = "0000_raws/{sample}_{lib}_R2.fastq.gz"
+    input :  fwd = pjoin(config['general']['raw_folder'], "{sample}_{lib}_R1.fastq.gz"),
+             rev = pjoin(config['general']['raw_folder'],"{sample}_{lib}_R2.fastq.gz")
     threads : 20
     output : read1 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/fwd_paired.fastq.gz",
              read2 = "1000_processed_reads/{sample}/reads/trimmomatic/{lib}/rev_paired.fastq.gz",
