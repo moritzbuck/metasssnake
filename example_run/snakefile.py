@@ -24,8 +24,8 @@ def all_binnings(wildcards):
     proto = "{root}/{name}/assemblies/{assembler}/binning/metabat/magstats.csv"
 
     singles = [proto.format(root = "1000_processed_reads", name = s, assembler = ass) for s in samps for ass in ['megahit']]#, 'spades']]
-#    ningles = [proto.format(root = "1500_coasses", name = s, assembler = ass) for s in coass for ass in ['megahit']]#, 'spades']]
-    return singles 
+    ningles = [proto.format(root = "1500_coasses", name = s, assembler = ass) for s in coass for ass in ['megahit']]#, 'spades']]
+    return singles + ningles
 
 rule make_all:
     input : all_binnings
