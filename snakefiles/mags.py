@@ -1,34 +1,13 @@
 from os.path import join as pjoin
 import os
+import uuid
 from subprocess import Popen, PIPE, call
 from Bio import SeqIO
 from tqdm import tqdm
 from pandas import DataFrame
+import pandas
 
-
-rule phylophlan :
-    params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
-             phylophlan_exe = "phylophlan.py",
-             phylophlan_taxa = "data/ppafull.tax.txt",
-             default_genomes = "/home/moritz/repos/github/phylophlan/input/default_genomes"
-    input : path = "{path}/{name}/bins/{assembler}/{type}MAGs", annotated = "{path}/{name}/bins/{assembler}/annotated"
-    output : "{path}/{name}/bins/{assembler}/{type}{name}.tree"
-    threads : 20
-    shell : """
-    DD=`pwd`
-    mkdir {params.phylophlan_path}/input/{wildcards.type}{wildcards.name}
-    cp {input.path}/*/*.faa {params.phylophlan_path}/input/{wildcards.type}{wildcards.name}
-    cd {params.phylophlan_path}/input/{wildcards.type}{wildcards.name}
-    for f in `ls *.faa`
-    do
-        sed -i 's/*//g' $f
-    done
-    cp {params.default_genomes}/*.faa .
-    cd ../..
-    python2.7 phylophlan.py --nproc {threads}  -i -t  {wildcards.type}{wildcards.name}
-    IFS=$"\n"; for r in `cat data/ppafull.tax.txt`; do id=`echo ${{r}} | cut -f1`; tax=`echo ${{r}} | cut -f2`; sed -i "s/${{id}}/${{id}}_${{tax}}/g" output/{wildcards.type}{wildcards.name}/{wildcards.type}{wildcards.name}.tree.int.nwk; done; unset IFS
-    cp output/{wildcards.type}{wildcards.name}/{wildcards.type}{wildcards.name}.tree.int.nwk $DD/{output}
-    """
+shell.prefix("module load bioinfo-tools bbmap samtools  BioPerl prokka    perl_modules; ")
 
 
 def mag_stat(folder, bin_head) :
@@ -68,9 +47,113 @@ def mag_stat(folder, bin_head) :
     #out_dict['taxo:phylophlan'] = tax[bin_id]
     return out_dict
 
+rule phylophlan :
+    input : magstats = "{path}/magstats.csv",
+            taxfile = "{path}/gtdbtk/gtdb.gtdbtk.tax"
+    output : tree = "{path}/phylophlan/phylophlan.tree",
+             tree_w_tax = "{path}/phylophlan/phylophlan.gtdbtk.tree"
+    conda : "gtdbtk"
+    threads : 20
+    params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
+             phylophlan_exe = "phylophlan.py",
+    run : 
+        temp_name = str(uuid.uuid4()).split("-")[-1]
+        mag_fold = pjoin(os.path.dirname(input.magstats), "clean_bins")
+        folder = pjoin(params.phylophlan_path, "input", temp_name)
+        os.makedirs(folder, exist_ok=True)
+        mag_dat = pandas.read_csv(input.magstats)
+        cwd =  os.getcwd()
+        
+        for l in mag_dat['Unnamed: 0'][mag_dat.completeness > 10]:
+            if "unbinned" not in l:
+                shutil.copy(pjoin(mag_fold, l, l + ".faa"), folder) 
+        
+        os.chdir(params.phylophlan_path)
+        phlan_line = "python2.7 phylophlan.py --nproc {threads}  -u  {name}"
+        call(phlan_line.format(threads = threads, name = temp_name), shell = True)
+        shutil.copy("output/{name}/{name}.tree.nwk".format(name = temp_name), "{cwd}/{output}".format(cwd = cwd, output = output.tree))
+        shutil.rmtree(pjoin("input", temp_name))
+        shutil.rmtree(pjoin("output", temp_name))
+        shutil.rmtree(pjoin("data", temp_name))
+        os.chdir(cwd)
+
+        with open("gtdbtk/gtdb.gtdbtk.tax") as handle:                                              
+            lines = handle.readlines()
+
+        name_dict = {l.split()[0] : l.split()[0] + "." + l.split()[1].replace(";",".") for l in lines}
+
+
+rule gtdbtk:
+    input : magstats = "{path}/magstats.csv"
+    output : taxfile = "{path}/gtdbtk/gtdb.gtdbtk.tax"
+    conda : "gtdbtk"
+    threads : 20 
+    run :
+        folder = os.path.dirname(output.taxfile)
+        os.makedirs(folder, exist_ok=True)
+        mag_dat = pandas.read_csv(input.magstats)        
+        for l in mag_dat['Unnamed: 0']:
+            if "unbinned" not in l:
+                shutil.copy(pjoin(folder, "../clean_bins", l, l + ".fna"), folder)
+
+        identify_line = "gtdbtk identify --genome_dir {path} --out_dir {path}/temp -x fna --cpus {threads}"
+        align_line = "gtdbtk align --identify_dir {path}/temp --out_dir {path}/temp --cpus {threads} "
+        classify_line = "gtdbtk classify --genome_dir {path} --align_dir {path}/temp --out_dir {path}/temp --cpus 1"
+        
+        call(identify_line.format(threads= threads, path = folder), shell = True)
+        call(align_line.format(threads= threads, path = folder), shell = True)
+        call(classify_line.format(threads= threads, path = folder), shell = True)
+
+        for f in os.listdir(folder):
+            if f.endswith(".fna"):
+                os.remove(pjoin(folder, f))
+
+
+def process_hmm_file(f) :
+    domtblout_head = ["target_name", "target_accession", "target_len", "query_name" , "query_accession", "query_len" , "E-value","score-sequence" , "bias-sequence" , "nbr", "of","C-value", "I-value", "score-domain" , "bias-domain" , "hmm_from" , "hmm_to" , "ali_from" , "ali_to" , "env_from" , "env_to" , "acc" , "description_of_target"]
+    data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22))
+    data = data.loc[data['E-value'] < 10e-9]
+    pfams_dict = {p : [] for p in set(data['target_name'])}
+    for a,b in data.iterrows():
+        pfams_dict[b['target_name']] += [b['query_accession']]
+    return pfams_dict
+
+rule hmmer_all_mags :
+    input : stats = "{path}/magstats.csv",
+            folder = "{path}/clean_bins",
+    output : pfam_sets = "{path}/pfam_sets.json"
+    threads : 20
+    run :
+        import json
+        from pathos.multiprocessing import ProcessingPool as Pool
+
+        stats_sheet = pandas.read_csv(input.stats)
+        bins =  list(stats_sheet['Unnamed: 0'])
+        hmm_string = "hmmsearch --noali --cpu {cpus} --domtblout {out} {db} {seqs} > /dev/null"
+        temp_pfam = pjoin(config['general']['temp_dir'], os.path.basename(config['mags']['pfams_db']))
+        shutil.copy(config['mags']['pfams_db'], temp_pfam)
+
+        commands = [hmm_string.format(cpus = 1, out = pjoin(input.folder, b, b + ".pfam.hmmsearch"), db = temp_pfam , seqs = pjoin(input.folder, b, b + ".faa")) for b in bins]
+        pool = Pool(threads)
+
+        def f(c): 
+            call(c, shell = True)
+            print("runned : " + c)
+            return "1"
+
+        pool.map(f, commands)
+
+        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in bins}
+
+        with open(output.pfam_sets, "w") : 
+            json.dump(big_dict)
+
+        
+        
 
 rule annotate_all_mags :
-    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins"
+    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins",
+            unbinned = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins/bin-unbinned.fasta"
     output : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
              stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
     threads : 20

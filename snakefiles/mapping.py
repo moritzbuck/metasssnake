@@ -19,7 +19,7 @@ def all_samples(wildcards):
 
         coas_sets = [f.split(".")[0] for f in os.listdir("9000_metadata/9100_samplesets/")]
         coas = [ f for f in wildcards.path.split("/") if f in  coas_sets ]
-        if len(coas) == 1:
+        if len(coas) >= 1:
                 with open(pjoin("9000_metadata/9100_samplesets/", coas[0] + '.txt')) as handle:
                      samples_from_sets = [l[:-1] for l in handle]
                 return samples_from_sets
@@ -46,8 +46,10 @@ rule bbmap_index:
              folder = "{path}/{fasta}/mapping",
              gz = "{path}/{fasta}/mapping/ref/genome/1/chr1.chrom.gz",
              flag = "{path}/{fasta}/mapping/ref.ed"
+    threads : 20
     run :
-       call("bbmap.sh ref={ref} path={folder}".format(ref = input.ref, folder = output.folder), shell = True)
+       # DEBUG add a test to see if crashed due to lack of memory or not!
+       call("bbmap.sh ref={ref} path={folder} threads={threads}".format(ref = input.ref, folder = output.folder, threads = threads), shell = True)
        call("touch " + output.flag, shell = True)
 
 rule sample_wise_bbmap :
@@ -55,14 +57,15 @@ rule sample_wise_bbmap :
             ref_path = "{path}/mapping",
             fwd = "1000_processed_reads/{sample}/reads/fwd.fastq.gz",
             rev = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
-    output : bam = "{path}/mapping/bams/{sample}.bam",
-             wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
+    output : wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
              stats = "{path}/mapping/bams/{sample}.stats",
-    threads :  5
+             bam = "{path}/mapping/bams/{sample}.bam"
+    threads :  10
     run : 
-        bb_string = "bbmap.sh  in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
+        bb_string = "bbmap.sh -Xmx55g in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
         bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
+        ### DEBUG add test for memory loss crash
         call(bb_string.format(fwd = input.fwd, rev = input.rev, threads = threads, ref = input.ref_path, out = temp_bam, bams = bamsc), shell = True)
         call(bamsc, shell=True)
         call("sambamba flagstat -t {threads} {tdir}/{samp}_sorted.bam > {wdup}".format(threads = threads, samp = wildcards.sample, wdup = output.wdups_stats, tdir = config['general']['temp_dir']), shell=True)
@@ -70,10 +73,10 @@ rule sample_wise_bbmap :
         call("samtools index {tdir}/{sample}.bam". format(sample = wildcards.sample, tdir = config['general']['temp_dir']), shell = True)
         call("sambamba flagstat  -t {threads} {tdir}/{samp}.bam > {stats}".format(threads = threads, samp = wildcards.sample, stats = output.stats, tdir = config['general']['temp_dir']), shell = True)
         for f in os.listdir(config['general']['temp_dir']):
-            if os.path.exists(pjoin(os.path.dirname(output.bam), f)):
-                  os.remove(pjoin(os.path.dirname(output.bam),f))
+            if os.path.exists(pjoin(os.path.dirname(output.stats), f)):
+                  os.remove(pjoin(os.path.dirname(output.stats),f))
             if f.startswith(wildcards.sample + ".bam"):
-                  shutil.move(pjoin(config['general']['temp_dir'], f), os.path.dirname(output.bam))
+                  shutil.move(pjoin(config['general']['temp_dir'], f), os.path.dirname(output.stats))
 
 
 rule bbmap_all_samples:
@@ -82,7 +85,7 @@ rule bbmap_all_samples:
     threads : 20
     shell : """
     jgi_summarize_bam_contig_depths --outputDepth {output[0]}  --pairedContigs {output[1]}  `dirname {input[1]}`/*.bam
-    rm `dirname {input[1]}`/*.bam
+#    rm `dirname {input[1]}`/*.bam
 """
 
 rule bbmap_bining_map:

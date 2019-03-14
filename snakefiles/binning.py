@@ -6,9 +6,10 @@ import shutil
 rule clean_metabat:
     input :
         clusters = "{path}/binning/metabat/clusters.txt",
-        assembly = "{path}/assembly.fna",
+        assembly = "{path}/filtered_assembly.fna",
     output :
-        folder = "{path}/binning/metabat/bins"
+        folder = "{path}/binning/metabat/bins",
+        unbinned = "{path}/binning/metabat/bins/bin-unbinned.fasta"
     run :
         import os
         from Bio import SeqIO
@@ -50,6 +51,7 @@ rule metabat :
     input : assembly = "{path}/filtered_assembly.fna",
             mapping = "{path}/filtered_assembly/mapping/map_table.tsv"
     output : file = "{path}/binning/metabat/clusters.txt"
+    threads : 20
     run :
         metabat_str = "metabat2 --maxP {maxP} --minS {minS} -m {min_len}  -s {min_bin_size} -i  {ass} -o {output} -a {mapping}  --saveCls  --unbinned -t {threads} --noBinOut"
         call(metabat_str.format(**config['binning']['metabat'], ass = input.assembly, output = output.file, mapping = input.mapping, threads = threads), shell = True)
