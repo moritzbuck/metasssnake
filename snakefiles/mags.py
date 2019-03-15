@@ -6,6 +6,7 @@ from Bio import SeqIO
 from tqdm import tqdm
 from pandas import DataFrame
 import pandas
+import hashlib
 
 shell.prefix("module load bioinfo-tools bbmap samtools  BioPerl prokka    perl_modules; ")
 
@@ -56,18 +57,18 @@ rule phylophlan :
     threads : 20
     params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
              phylophlan_exe = "phylophlan.py",
-    run : 
+    run :
         temp_name = str(uuid.uuid4()).split("-")[-1]
         mag_fold = pjoin(os.path.dirname(input.magstats), "clean_bins")
         folder = pjoin(params.phylophlan_path, "input", temp_name)
         os.makedirs(folder, exist_ok=True)
         mag_dat = pandas.read_csv(input.magstats)
         cwd =  os.getcwd()
-        
+
         for l in mag_dat['Unnamed: 0'][mag_dat.completeness > 10]:
             if "unbinned" not in l:
-                shutil.copy(pjoin(mag_fold, l, l + ".faa"), folder) 
-        
+                shutil.copy(pjoin(mag_fold, l, l + ".faa"), folder)
+
         os.chdir(params.phylophlan_path)
         phlan_line = "python2.7 phylophlan.py --nproc {threads}  -u  {name}"
         call(phlan_line.format(threads = threads, name = temp_name), shell = True)
@@ -77,7 +78,7 @@ rule phylophlan :
         shutil.rmtree(pjoin("data", temp_name))
         os.chdir(cwd)
 
-        with open("gtdbtk/gtdb.gtdbtk.tax") as handle:                                              
+        with open("gtdbtk/gtdb.gtdbtk.tax") as handle:
             lines = handle.readlines()
 
         name_dict = {l.split()[0] : l.split()[0] + "." + l.split()[1].replace(";",".") for l in lines}
@@ -87,11 +88,11 @@ rule gtdbtk:
     input : magstats = "{path}/magstats.csv"
     output : taxfile = "{path}/gtdbtk/gtdb.gtdbtk.tax"
     conda : "gtdbtk"
-    threads : 20 
+    threads : 20
     run :
         folder = os.path.dirname(output.taxfile)
         os.makedirs(folder, exist_ok=True)
-        mag_dat = pandas.read_csv(input.magstats)        
+        mag_dat = pandas.read_csv(input.magstats)
         for l in mag_dat['Unnamed: 0']:
             if "unbinned" not in l:
                 shutil.copy(pjoin(folder, "../clean_bins", l, l + ".fna"), folder)
@@ -99,7 +100,7 @@ rule gtdbtk:
         identify_line = "gtdbtk identify --genome_dir {path} --out_dir {path}/temp -x fna --cpus {threads}"
         align_line = "gtdbtk align --identify_dir {path}/temp --out_dir {path}/temp --cpus {threads} "
         classify_line = "gtdbtk classify --genome_dir {path} --align_dir {path}/temp --out_dir {path}/temp --cpus 1"
-        
+
         call(identify_line.format(threads= threads, path = folder), shell = True)
         call(align_line.format(threads= threads, path = folder), shell = True)
         call(classify_line.format(threads= threads, path = folder), shell = True)
@@ -118,10 +119,13 @@ def process_hmm_file(f) :
         pfams_dict[b['target_name']] += [b['query_accession']]
     return pfams_dict
 
+
 rule hmmer_all_mags :
-    input : stats = "{path}/magstats.csv",
-            folder = "{path}/clean_bins",
-    output : pfam_sets = "{path}/pfam_sets.json"
+    input : stats = "{path}/binning/{binner}/magstats.csv",
+            cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
+            folder = "{path}//binning/{binner}/clean_bins",
+    output : pfam_sets = "{path}/pfam_sets.json",
+             normed_mat = "{path}/normed_pfam_covs.csv"
     threads : 20
     run :
         import json
@@ -136,7 +140,7 @@ rule hmmer_all_mags :
         commands = [hmm_string.format(cpus = 1, out = pjoin(input.folder, b, b + ".pfam.hmmsearch"), db = temp_pfam , seqs = pjoin(input.folder, b, b + ".faa")) for b in bins]
         pool = Pool(threads)
 
-        def f(c): 
+        def f(c):
             call(c, shell = True)
             print("runned : " + c)
             return "1"
@@ -145,11 +149,77 @@ rule hmmer_all_mags :
 
         big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in bins}
 
-        with open(output.pfam_sets, "w") : 
+        print("dumping PFAM dict")
+
+
+        with open(output.pfam_sets, "w") :
             json.dump(big_dict)
 
-        
-        
+        print("parsing gffs to link contigs to CDSs")
+
+        prot2contig = {}
+        for b in tqdm(bins):
+            f = pjoin(input.folder, b, b + ".gff")
+            with open(f) as handle:
+                for line in handle:
+                    if line == '##FASTA\n':
+                        break
+                    elif line[0] != "#":
+                        cont_id = line.split("\t")[0]
+                        traits = {t.split("=")[0] : t.split("=")[1]  for t in line.split("\t")[-1].split(";")}
+                        cds_id = traits.get('ID')
+                        prot2contig[cds_id] = cont_id
+
+        ctgs2pfam = {g + ":" +  prot2contig[k].split(":")[1] : v  for g,d in tqdm(big_dict.items()) for k, v in d.items()}
+        all_pfams = set(sum(ctgs2pfam.values(),[]))
+        all_pfams_as_ctgs = {p : [] for p in all_pfams}
+        for k, v in tqdm(ctgs2pfam.items()):
+            for vv in v:
+                all_pfams_as_ctgs[vv] += [k]
+
+        covs = pandas.read_csv(input.cov_table, sep="\t")
+        clsts_file = pjoin(os.path.dirname(input.stats), "clusters.txt")
+
+        if os.path.exists(clsts_file):
+            print("fixing name issues between pretty bin names and names of the assembly")
+            ass = os.path.dirname(input.cov_table).replace("/mapping",".fna")
+            m = hashlib.md5()
+            check_dict = {hashlib.md5(str(s.seq).encode('utf-8')).hexdigest() : s.id for s in tqdm(SeqIO.parse(ass, "fasta"))}
+
+            trans_map = { s.id : check_dict[hashlib.md5(str(s.seq).encode('utf-8')).hexdigest()] for b in tqdm(bins) for s in SeqIO.parse(pjoin(input.folder, b, b + ".fna"), "fasta")}
+            maps_trans = {v : k for k,v in trans_map.items()}
+
+            prefs2 = set("_".join(s.split("_")[:-1]) for s in sum(all_pfams_as_ctgs.values(),[]))
+            assert len(prefs2) == 1
+            prefs2 = list(prefs2)[0] + "_bin-"
+
+            covs.index = [maps_trans.get(c,c).replace("bin-",prefs2) for c in covs['contigName']]
+            covs = covs.loc[[c for c in covs.index if "/" in c]]
+        else :
+            covs.index = covs['contigName']
+
+        lengDict = covs['contigLen'].to_dict()
+        covs = covs[[c for c in covs.columns if c.endswith(".bam")]]
+
+
+        pfam_cov_dict = { k : covs.loc[v].sum() for k,v in tqdm(all_pfams_as_ctgs.items())}
+        pfam_pandas = pandas.DataFrame.from_dict(pfam_cov_dict, orient="index")
+        pfam_pandas.index = [p.split(".")[0] for p in pfam_pandas.index]
+        pfam_pandas.columns = [c.replace(".bam", "") for c in pfam_pandas.columns]
+
+        with open("/home/moritz/dbs/pfam/pfam_dict.csv") as handle:
+            pfam2id = {l.split()[0] : l.split()[1].split(".")[0]  for l in handle}
+            id2pfam = {v : k for k,v in pfam2id.items()}
+
+        with open("/home/moritz/dbs/pfam/sc_pfams.txt" ) as handle:
+            sc_pfams = [s[:-1] for s in handle]
+
+        norm_factor = pfam_pandas.loc[sc_pfams].mean().to_dict()
+        normed_pfam_pandas = pandas.DataFrame.from_dict({ k : {kk : vv/norm_factor[k] for kk, vv in v.items()} for k, v in pfam_pandas.to_dict().items()})
+        normed_pfam_pandas.to_csv(output.normed_mat)
+
+
+
 
 rule annotate_all_mags :
     input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins",
@@ -176,7 +246,7 @@ rule annotate_all_mags :
             if meta == "":
                 call(checkm_line.format(threads= threads, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
                 shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
-            
+
             shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
             out_dict[prefix] = mag_stat(pjoin(output.folder, prefix), prefix)
         DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
