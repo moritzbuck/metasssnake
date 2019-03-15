@@ -249,7 +249,7 @@ rule annotate_all_mags :
             b_name = b[:-6].replace("_", "-" )
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
             prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
-            if !os.path.exists("{temp_out}/{prefix}/checkm.txt".format(temp_out = output.folder, prefix = prefix)):
+            if not os.path.exists("{temp_out}/{prefix}/checkm.txt".format(temp_out = output.folder, prefix = prefix)):
                 call(prok, shell = True)
                 if meta == "":
                     call(checkm_line.format(threads= 1, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
