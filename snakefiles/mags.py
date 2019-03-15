@@ -123,9 +123,9 @@ def process_hmm_file(f) :
 rule hmmer_all_mags :
     input : stats = "{path}/binning/{binner}/magstats.csv",
             cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
-            folder = "{path}//binning/{binner}/clean_bins",
-    output : pfam_sets = "{path}/pfam_sets.json",
-             normed_mat = "{path}/normed_pfam_covs.csv"
+            folder = "{path}/binning/{binner}/clean_bins",
+    output : pfam_sets = "{path}/binning/{binner}/pfam_sets.json",
+             normed_mat = "{path}/binning/{binner}/normed_pfam_covs.csv"
     threads : 20
     run :
         import json
