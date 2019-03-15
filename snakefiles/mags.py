@@ -120,40 +120,15 @@ def process_hmm_file(f) :
     return pfams_dict
 
 
-rule hmmer_all_mags :
-    input : stats = "{path}/binning/{binner}/magstats.csv",
-            cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
-            folder = "{path}/binning/{binner}/clean_bins",
-    output : pfam_sets = "{path}/binning/{binner}/pfam_sets.json",
-             normed_mat = "{path}/binning/{binner}/normed_pfam_covs.csv"
-    threads : 20
+rule hmmer_table :
+    input : cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
+            pfam_sets = "{path}/binning/{binner}/pfam_sets.json"
+    output : normed_mat = "{path}/binning/{binner}/normed_pfam_covs.csv",
+             raw_mat = "{path}/binning/{binner}/pfam_covs.csv"
+    threads : 1
     run :
-        import json
-        from pathos.multiprocessing import ProcessingPool as Pool
-
-        stats_sheet = pandas.read_csv(input.stats)
-        bins =  list(stats_sheet['Unnamed: 0'])
-        hmm_string = "hmmsearch --noali --cpu {cpus} --domtblout {out} {db} {seqs} > /dev/null"
-        temp_pfam = pjoin(config['general']['temp_dir'], os.path.basename(config['mags']['pfams_db']))
-        shutil.copy(config['mags']['pfams_db'], temp_pfam)
-
-        commands = [hmm_string.format(cpus = 1, out = pjoin(input.folder, b, b + ".pfam.hmmsearch"), db = temp_pfam , seqs = pjoin(input.folder, b, b + ".faa")) for b in bins]
-        pool = Pool(threads)
-
-        def f(c):
-            call(c, shell = True)
-            print("runned : " + c)
-            return "1"
-
-        pool.map(f, commands)
-
-        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in bins}
-
-        print("dumping PFAM dict")
-
-
-        with open(output.pfam_sets, "w") :
-            json.dump(big_dict)
+        with open(input.pfam_sets, "w") :
+            big_dict = json.load(handle)
 
         print("parsing gffs to link contigs to CDSs")
 
@@ -219,6 +194,37 @@ rule hmmer_all_mags :
         normed_pfam_pandas.to_csv(output.normed_mat)
 
 
+rule hmmer_all_mags :
+    input : stats = "{path}/magstats.csv",
+            folder = "{path}/clean_bins",
+    output : pfam_sets = "{path}/pfam_sets.json"
+    threads : 20
+    run :
+        import json
+        from pathos.multiprocessing import ProcessingPool as Pool
+
+        stats_sheet = pandas.read_csv(input.stats)
+        bins =  list(stats_sheet['Unnamed: 0'])
+        hmm_string = "hmmsearch --noali --cpu {cpus} --domtblout {out} {db} {seqs} > /dev/null"
+        temp_pfam = pjoin(config['general']['temp_dir'], os.path.basename(config['mags']['pfams_db']))
+        shutil.copy(config['mags']['pfams_db'], temp_pfam)
+
+        commands = [hmm_string.format(cpus = 1, out = pjoin(input.folder, b, b + ".pfam.hmmsearch"), db = temp_pfam , seqs = pjoin(input.folder, b, b + ".faa")) for b in bins]
+        pool = Pool(threads)
+
+        def f(c):
+            call(c, shell = True)
+            print("runned : " + c)
+            return "1"
+
+        pool.map(f, commands)
+
+        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in bins}
+
+        print("dumping PFAM dict")
+
+        with open(output.pfam_sets, "w") as handle:
+            json.dump(big_dict, handle)
 
 
 rule annotate_all_mags :
@@ -236,19 +242,28 @@ rule annotate_all_mags :
         checkm_line = "checkm lineage_wf -t {threads} -x fna {temp_out}/{prefix} {temp_out}/{prefix}/data > {temp_out}/{prefix}/checkm.txt"
         out_dict = {}
 
-        for b in bins:
+        pool = Pool(threads)
+
+        def f(b):
             meta = "--metagenome" if b == "bin-unbinned.fasta" else ""
             b_name = b[:-6].replace("_", "-" )
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
-            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = threads, bins = pjoin(input.folder, b) )
+            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
+            if !os.path.exists("{temp_out}/{prefix}/checkm.txt".format(output.folder, prefix = prefix)):
+                call(prok, shell = True)
+                if meta == "":
+                    call(checkm_line.format(threads= 1, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
+                    shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
 
-            call(prok, shell = True)
-            if meta == "":
-                call(checkm_line.format(threads= threads, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
-                shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
+                shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
+            print("runned : " + bin)
 
-            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
-            out_dict[prefix] = mag_stat(pjoin(output.folder, prefix), prefix)
+        pool.map(f, bins)
+
+        prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b[:-6].replace("_", "-" ))
+        print("computing stats")
+        out_dict = { prefix(b) : mag_stat(pjoin(output.folder, prefix(b)), prefix(b)) for b in bin}
+
         DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
 
 
