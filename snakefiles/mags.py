@@ -130,7 +130,7 @@ rule hmmer_table :
             folder = "{path}/clean_bins",
             cov_table = cov_table,
             pfam_sets = "{path}/pfam_sets.json"
-    output : normed_mat = "{path}normed_pfam_covs.csv",
+    output : normed_mat = "{path}/normed_pfam_covs.csv",
              raw_mat = "{path}/pfam_covs.csv"
     threads : 1
     run :
