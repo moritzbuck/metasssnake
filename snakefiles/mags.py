@@ -121,16 +121,21 @@ def process_hmm_file(f) :
 
 
 rule hmmer_table :
-    input : cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
+    input : stats = "{path}/binning/{binner}/magstats.csv",
+            folder = "{path}/binning/{binner}/clean_bins",
+            cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
             pfam_sets = "{path}/binning/{binner}/pfam_sets.json"
     output : normed_mat = "{path}/binning/{binner}/normed_pfam_covs.csv",
              raw_mat = "{path}/binning/{binner}/pfam_covs.csv"
     threads : 1
     run :
-        with open(input.pfam_sets, "w") :
+        with open(input.pfam_sets)  as handle:
             big_dict = json.load(handle)
 
         print("parsing gffs to link contigs to CDSs")
+
+        stats_sheet = pandas.read_csv(input.stats)
+        bins =  list(stats_sheet['Unnamed: 0'])
 
         prot2contig = {}
         for b in tqdm(bins):
@@ -208,14 +213,17 @@ rule hmmer_all_mags :
         hmm_string = "hmmsearch --noali --cpu {cpus} --domtblout {out} {db} {seqs} > /dev/null"
         temp_pfam = pjoin(config['general']['temp_dir'], os.path.basename(config['mags']['pfams_db']))
         shutil.copy(config['mags']['pfams_db'], temp_pfam)
-
-        commands = [hmm_string.format(cpus = 1, out = pjoin(input.folder, b, b + ".pfam.hmmsearch"), db = temp_pfam , seqs = pjoin(input.folder, b, b + ".faa")) for b in bins]
+        bad_bins = set([b for b in bins if os.stat(pjoin(input.folder, b, b + ".faa")).st_size == 0])
+        for b in bad_bins :
+            call("touch " + pjoin(input.folder, b, b + ".pfam.hmmsearch"), shell = True)
+        commands = [hmm_string.format(cpus = 1, out = pjoin(input.folder, b, b + ".pfam.hmmsearch"), db = temp_pfam , seqs = pjoin(input.folder, b, b + ".faa")) for b in bins if not os.path.exists(pjoin(input.folder, b, b + ".pfam.hmmsearch"))]
+        print(commands)
         pool = Pool(threads)
 
         def f(c):
             call(c, shell = True)
-            print("runned : " + c)
             return "1"
+
 
         pool.map(f, commands)
 
@@ -234,12 +242,13 @@ rule annotate_all_mags :
              stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
     threads : 20
     run :
+        from pathos.multiprocessing import ProcessingPool as Pool
         bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
         if not os.path.exists(output.folder):
             os.makedirs(output.folder)
 
-        prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins}"
-        checkm_line = "checkm lineage_wf -t {threads} -x fna {temp_out}/{prefix} {temp_out}/{prefix}/data > {temp_out}/{prefix}/checkm.txt"
+        prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins} 2> /dev/null > /dev/null"
+        checkm_line = "checkm lineage_wf -t {threads} -x fna {temp_out}/{prefix} {temp_out}/{prefix}/data > {temp_out}/{prefix}/checkm.txt 2> /dev/null"
         out_dict = {}
 
         pool = Pool(threads)
@@ -249,20 +258,28 @@ rule annotate_all_mags :
             b_name = b[:-6].replace("_", "-" )
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
             prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
-            if not os.path.exists("{temp_out}/{prefix}/checkm.txt".format(temp_out = output.folder, prefix = prefix)):
-                call(prok, shell = True)
-                if meta == "":
-                    call(checkm_line.format(threads= 1, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
-                    shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
+            call(prok, shell = True)
+            if meta == "":
+                call(checkm_line.format(threads= 1, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
+                shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
+            
+            if os.path.exists(pjoin(output.folder,prefix)):
+                shutil.rmtree(pjoin(output.folder,prefix))
 
-                shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
-            print("runned : " + bin)
+            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
 
-        pool.map(f, bins)
 
-        prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b[:-6].replace("_", "-" ))
+        prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = bin[:-6].replace("_", "-" ))
+        run_bins = [b for b in bins if not os.path.exists("{temp_out}/{prefix}/checkm.txt".format(temp_out = output.folder, prefix = prefix(b)))]
+        if os.path.exists("{temp_out}/{prefix}/{prefix}.faa".format(temp_out = output.folder, prefix = prefix("bin-unbinned.fasta"))):
+            run_bins.remove("bin-unbinned.fasta")
+        print(run_bins)
+        
+        pool.map(f, run_bins)
+
+
         print("computing stats")
-        out_dict = { prefix(b) : mag_stat(pjoin(output.folder, prefix(b)), prefix(b)) for b in bin}
+        out_dict = { prefix(b) : mag_stat(pjoin(output.folder, prefix(b)), prefix(b)) for b in bins}
 
         DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
 
