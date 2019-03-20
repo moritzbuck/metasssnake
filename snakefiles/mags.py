@@ -121,9 +121,9 @@ def process_hmm_file(f) :
 
 def cov_table(wildcards):
     if "1500_" in wildcards.path or "1000_" in wildcards.path:
-        return "{path}/../../filtered_assembly/mapping/map_table.tsv"
+        return pjoin(wildcards.path,"../../filtered_assembly/mapping/map_table.tsv")
     else :
-        return "{path}/FullAssembly/mapping/map_table.tsv"
+        return pjoin(wildcards.path, "FullAssembly/mapping/map_table.tsv")
 
 rule hmmer_table :
     input : stats = "{path}/magstats.csv",
