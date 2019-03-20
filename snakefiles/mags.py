@@ -119,14 +119,19 @@ def process_hmm_file(f) :
         pfams_dict[b['target_name']] += [b['query_accession']]
     return pfams_dict
 
+def cov_table(wildcards):
+    if "1500_" in wildcards.path or "1000_" in wildcards.path:
+        return "{path}/../../filtered_assembly/mapping/map_table.tsv"
+    else :
+        return "{path}/FullAssembly/mapping/map_table.tsv"
 
 rule hmmer_table :
-    input : stats = "{path}/binning/{binner}/magstats.csv",
-            folder = "{path}/binning/{binner}/clean_bins",
-            cov_table = "{path}/filtered_assembly/mapping/map_table.tsv",
-            pfam_sets = "{path}/binning/{binner}/pfam_sets.json"
-    output : normed_mat = "{path}/binning/{binner}/normed_pfam_covs.csv",
-             raw_mat = "{path}/binning/{binner}/pfam_covs.csv"
+    input : stats = "{path}/magstats.csv",
+            folder = "{path}/clean_bins",
+            cov_table = cov_table,
+            pfam_sets = "{path}/pfam_sets.json"
+    output : normed_mat = "{path}normed_pfam_covs.csv",
+             raw_mat = "{path}/pfam_covs.csv"
     threads : 1
     run :
         with open(input.pfam_sets)  as handle:
@@ -262,7 +267,7 @@ rule annotate_all_mags :
             if meta == "":
                 call(checkm_line.format(threads= 1, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
                 shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
-            
+
             if os.path.exists(pjoin(output.folder,prefix)):
                 shutil.rmtree(pjoin(output.folder,prefix))
 
@@ -274,7 +279,7 @@ rule annotate_all_mags :
         if os.path.exists("{temp_out}/{prefix}/{prefix}.faa".format(temp_out = output.folder, prefix = prefix("bin-unbinned.fasta"))):
             run_bins.remove("bin-unbinned.fasta")
         print(run_bins)
-        
+
         pool.map(f, run_bins)
 
 
