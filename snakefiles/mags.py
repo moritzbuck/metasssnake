@@ -83,6 +83,16 @@ rule phylophlan :
 
         name_dict = {l.split()[0] : l.split()[0] + "." + l.split()[1].replace(";",".") for l in lines}
 
+rule sourmash:
+    input : gtdb_class = "{path}/gtdbtk/gtdb.gtdbtk.tax"
+            def_db = ""
+            
+    run :
+        mkdir sourmash
+        cp gtdbtk/gtdb.gtdbtk.tax sourmash/db.tax
+        grep -h -v ^identifier ~/dbs/sourmash/gtdb/gtdb_taxonomy.mod.tsv ~/dbs/sourmash/fungiii/fungiii.csv >> sourmash/db.tax
+        cp ~/dbs/sourmash/all_sigs/* sourmash/sigs/
+        mv clean_bins/*.sig  sourmash/sigs/
 
 rule gtdbtk:
     input : magstats = "{path}/magstats.csv"
@@ -109,10 +119,21 @@ rule gtdbtk:
             if f.endswith(".fna"):
                 os.remove(pjoin(folder, f))
 
+        head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
+        with open(pjoin(folder, "temp", "gtdbtk.ar122.summary.tsv")) as handle:
+            arc_data = [l.split('\t')[0:2] for l in handle.readlines()[1:]]
+            arc_data = [t[0] + "," + t[1].replace(";",",") + ",\n"  for t in arc_data]
+        with open(pjoin(folder, "temp", "gtdbtk.bac120.summary.tsv")) as handle:
+            bac_data = [l.split('\t')[0:2] for l in handle.readlines()[1:]]
+            bac_data = [t[0] + "," + t[1].replace(";",",") + ",\n"  for t in bac_data]
+        with open(output.taxfile, "w") as handle:
+            handle.writelines([head_line] + arc_data + bac_data)
+    
 
 def process_hmm_file(f) :
+#    print("processing", f)
     domtblout_head = ["target_name", "target_accession", "target_len", "query_name" , "query_accession", "query_len" , "E-value","score-sequence" , "bias-sequence" , "nbr", "of","C-value", "I-value", "score-domain" , "bias-domain" , "hmm_from" , "hmm_to" , "ali_from" , "ali_to" , "env_from" , "env_to" , "acc" , "description_of_target"]
-    data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22))
+    data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22), engine='python')
     data = data.loc[data['E-value'] < 10e-9]
     pfams_dict = {p : [] for p in set(data['target_name'])}
     for a,b in data.iterrows():
@@ -124,6 +145,30 @@ def cov_table(wildcards):
         return pjoin(wildcards.path,"../../filtered_assembly/mapping/map_table.tsv")
     else :
         return pjoin(wildcards.path, "FullAssembly/mapping/map_table.tsv")
+
+rule tax_table:
+    input : cov_table = cov_table,
+            tax_table = "full_taxonomy.tax"
+    output : normed_mat = "{path}/normed_reads_mat.csv",
+             raw_mat = "{path}/reads_mats.csv"
+    threads : 1
+    run :
+        import pandas
+        cov_table = input.cov_table
+        tax_table = input.tax_table
+        covs = pandas.read_csv(cov_table, sep="\t", index_col = 0)
+        tax_dict = pandas.read_csv(tax_table, index_col=0).to_dict()
+        
+        lens = covs['contigLen']
+        covs = covs[[c for c in covs.columns if c.endswith(".bam")]]
+        reads = covs.apply(lambda l : l*lens)
+        
+        print("normalize table")
+
+        normed_reads = reads.apply(lambda l : l/sum(l), axis='index')
+        normed_pfam_pandas.to_csv(output.normed_mat)
+
+
 
 rule hmmer_table :
     input : stats = "{path}/magstats.csv",
@@ -162,6 +207,7 @@ rule hmmer_table :
             for vv in v:
                 all_pfams_as_ctgs[vv] += [k]
 
+        print("open coverage file")
         covs = pandas.read_csv(input.cov_table, sep="\t")
         clsts_file = pjoin(os.path.dirname(input.stats), "clusters.txt")
 
@@ -187,11 +233,15 @@ rule hmmer_table :
         covs = covs[[c for c in covs.columns if c.endswith(".bam")]]
 
 
+        print("make coverage dict")
         pfam_cov_dict = { k : covs.loc[v].sum() for k,v in tqdm(all_pfams_as_ctgs.items())}
         pfam_pandas = pandas.DataFrame.from_dict(pfam_cov_dict, orient="index")
         pfam_pandas.index = [p.split(".")[0] for p in pfam_pandas.index]
         pfam_pandas.columns = [c.replace(".bam", "") for c in pfam_pandas.columns]
 
+        pfam_pandas.to_csv(output.raw_mat)
+
+        print("open pfam metadata")
         with open("/home/moritz/dbs/pfam/pfam_dict.csv") as handle:
             pfam2id = {l.split()[0] : l.split()[1].split(".")[0]  for l in handle}
             id2pfam = {v : k for k,v in pfam2id.items()}
@@ -199,6 +249,7 @@ rule hmmer_table :
         with open("/home/moritz/dbs/pfam/sc_pfams.txt" ) as handle:
             sc_pfams = [s[:-1] for s in handle]
 
+        print("normalize table")
         norm_factor = pfam_pandas.loc[sc_pfams].mean().to_dict()
         normed_pfam_pandas = pandas.DataFrame.from_dict({ k : {kk : vv/norm_factor[k] for kk, vv in v.items()} for k, v in pfam_pandas.to_dict().items()})
         normed_pfam_pandas.to_csv(output.normed_mat)
@@ -232,7 +283,7 @@ rule hmmer_all_mags :
 
         pool.map(f, commands)
 
-        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in bins}
+        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in tqdm(bins)}
 
         print("dumping PFAM dict")
 
@@ -245,7 +296,7 @@ rule annotate_all_mags :
             unbinned = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins/bin-unbinned.fasta"
     output : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
              stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
-    threads : 20
+    threads : 16
     run :
         from pathos.multiprocessing import ProcessingPool as Pool
         bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
