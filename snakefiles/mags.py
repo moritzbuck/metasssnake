@@ -22,7 +22,7 @@ def mag_stat(folder, bin_head) :
         with open(bin_checkm) as handle:
             dat = handle.readlines()
         dat = {l.split()[0] : {k : v for k,v in zip(checkm_fields, l[:-1].split() ) } for l in dat[3:-1]}
-        dat = dat[bin_head]
+        dat = dat[bin_head] 
 
         out_dict['completeness'] = float(dat['Completeness'])
         out_dict['contamination'] = float(dat['Contamination'])
@@ -154,19 +154,51 @@ rule tax_table:
     threads : 1
     run :
         import pandas
+        from pandas import Series
         cov_table = input.cov_table
         tax_table = input.tax_table
         covs = pandas.read_csv(cov_table, sep="\t", index_col = 0)
-        tax_dict = pandas.read_csv(tax_table, index_col=0).to_dict()
-        
+        tax_dict = list(pandas.read_csv(tax_table, index_col=0).to_dict().values())[0]
+        tax_df = pandas.DataFrame.from_dict({ k : {l : vv.split("__")[-1] if vv != 'None' else '' for l, vv in zip(levels, v.split(";")) }for k, v in tax_dict.items()}, orient="index").fillna("")
+
+        levels = ['domain','phylum','class','order','family','genus']
+        unbinned = Series(['unbinned']*len(levels), index =levels)
         lens = covs['contigLen']
         covs = covs[[c for c in covs.columns if c.endswith(".bam")]]
         reads = covs.apply(lambda l : l*lens)
-        
+        reads.columns = [c.replace(".bam", "") for c in reads.columns]
         print("normalize table")
 
         normed_reads = reads.apply(lambda l : l/sum(l), axis='index')
-        normed_pfam_pandas.to_csv(output.normed_mat)
+        normed_reads['contig'] = normed_reads.index
+        melted_reads = normed_reads.melt(id_vars = 'contig', value_name="reads", var_name="sample")
+        
+        melted_reads['mab'] = [c.split(":")[0] for c in melted_reads.contig]
+        melted_reads = melted_reads.apply(lambda l : l.append(tax_df.loc[l.mab]) if "unbinned" not in l.mab else l.append(unbinned), axis=1)
+
+        value_dict = {g[0] : g[1].reads.sum() for g in melted_reads.groupby(['mab', 'sample'])}
+        contig_wise_table = pandas.DataFrame.from_dict({ sample : { k[0] : v for k, v in value_dict.items() if k[1] == sample}  for sample in  normed_reads.columns if sample != 'contig' })
+        contig_wise_table['mab'] = contig_wise_table.index
+
+        clean_tax =  lambda s: Series([ss if ss != "" else ("undetermined" + last([tt for tt in s if tt ])) for ss in s], levels )
+        last = lambda ll : ("_" + ll[-1]) if len(ll) > 0 else ""
+
+        tax_df = tax_df.apply(clean_tax, axis=1)
+
+        melted_contig_read = contig_wise_table.melt(id_vars = 'mab', value_name="reads", var_name="sample")
+        melted_contig_read = melted_contig_read.apply(lambda l : l.append(tax_df.loc[l.mab]) if "unbinned" not in l.mab else l.append(unbinned), axis=1) 
+
+        level_tables = {}
+        for l in levels:
+            value_dict = {g[0] : g[1].reads.sum() for g in melted_contig_read.groupby([l, "sample"])}
+            level_tables[l] = pandas.DataFrame.from_dict({ sample : { k[0] : v for k, v in value_dict.items() if k[1] == sample}  for sample in  normed_reads.columns if sample != 'contig' })
+            
+        contig_wise_table.to_csv("abundance_tables/abundance_per_bin.csv")
+        reads.to_csv("abundance_tables/raw_read_counts.csv")
+        normed_reads.to_csv("abundance_tables/abundance_per_contig.csv")
+        for k, l in level_tables.items():
+            l.to_csv("abundance_tables/abundance_per_" + k + ".csv")
+
 
 
 
