@@ -8,7 +8,7 @@ from pandas import DataFrame
 import pandas
 import hashlib
 
-shell.prefix("module load bioinfo-tools bbmap samtools  BioPerl prokka    perl_modules; ")
+#shell.prefix("module load bioinfo-tools bbmap samtools  BioPerl prokka    perl_modules; ")
 
 
 def mag_stat(folder, bin_head) :
@@ -53,7 +53,6 @@ rule phylophlan :
             taxfile = "{path}/gtdbtk/gtdb.gtdbtk.tax"
     output : tree = "{path}/phylophlan/phylophlan.tree",
              tree_w_tax = "{path}/phylophlan/phylophlan.gtdbtk.tree"
-    conda : "gtdbtk"
     threads : 20
     params : phylophlan_path = "/home/moritz/repos/github/phylophlan",
              phylophlan_exe = "phylophlan.py",
@@ -83,21 +82,105 @@ rule phylophlan :
 
         name_dict = {l.split()[0] : l.split()[0] + "." + l.split()[1].replace(";",".") for l in lines}
 
-rule sourmash:
-    input : gtdb_class = "{path}/gtdbtk/gtdb.gtdbtk.tax"
-            def_db = ""
-            
+rule mash_lca:
+    params : "/home/moritz/dbs/sourmash/gtdb/gtdb.lca.json"
+    input : gtdb_class = "{path}/gtdbtk/gtdb.gtdbtk.tax",
+            sig_list = "{path}/sourmash/sigs.list",
+    output :sourmash_combo_class = "{path}/sourmash/combo.sourmash.tax",
+            sourmash_local_db = "{path}/sourmash/local.lca.json"
+    conda : "smash"
+    shell :
+        """
+        folder=`dirname {output.sourmash_combo_class}`
+        echo "extra db :" {params}
+        cp {input.gtdb_class} $folder/db.tax
+        sed -i 's/[dpcofgs]__//g' $folder/db.tax
+        sourmash lca index  $folder/db.tax {output.sourmash_local_db}  $folder/good_sigs/*.sig
+        sourmash lca classify --db {output.sourmash_local_db} {params} --query  $folder/sigs/*.sig > {output.sourmash_combo_class}
+        """
+
+rule merg_classes : 
+    input : sourmash_combo_class = "{path}/sourmash/combo.sourmash.tax",
+            gtdb_class = "{path}/gtdbtk/gtdb.gtdbtk.tax"
+    output : full_class = "{path}/full_taxonomy.tax"
+    threads : 1
+    run : 
+            import re
+            sourmash_combo_class = input.sourmash_combo_class
+            gtdb_class = input.gtdb_class
+            full_class = output.full_class
+            with open(gtdb_class) as handle : 
+                gtdbtk_tax = {l.split(",")[0] : re.sub("[dpcofgs]__", '', l[:-1]) for l in handle.readlines() if not l.startswith('identifiers') }
+          
+            head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
+  
+            with open(sourmash_combo_class) as handle : 
+                sourmash_tax = {l.split(",")[0] : l[:-1] for l in handle.readlines() if not l.startswith('ID') and "nomatch" not in l}
+            confused = {k :  v.replace(",disagree", "") for k, v in sourmash_tax.items() if "disagree" in v}
+            sourmash_tax = {k :  v.replace(",found", "") for k, v in sourmash_tax.items() if "found" in v}
+            sourmash_tax.update(gtdbtk_tax)
+            with open(full_class, "w" ) as handle:
+                handle.writelines([head_line] + [s + "\n" for s in sourmash_tax.values()])
+
+
+rule mash_mags:
+    input : magstats = "{path}/magstats.csv"
+    output : sig_list = "{path}/sourmash/sigs.list",
+             mag_list = "{path}/sourmash/mags.list",
+             out_folder = "{path}/sourmash/sigs/",
+             good_sigs = "{path}/sourmash/good_sigs/"
+#    conda : "smash"
+    threads : 20
     run :
-        mkdir sourmash
-        cp gtdbtk/gtdb.gtdbtk.tax sourmash/db.tax
-        grep -h -v ^identifier ~/dbs/sourmash/gtdb/gtdb_taxonomy.mod.tsv ~/dbs/sourmash/fungiii/fungiii.csv >> sourmash/db.tax
-        cp ~/dbs/sourmash/all_sigs/* sourmash/sigs/
-        mv clean_bins/*.sig  sourmash/sigs/
+        import shutil
+        from numpy import logical_and
+        magstats = input.magstats
+        sig_list = output.sig_list
+        mag_list = output.mag_list
+        folder = wildcards.path 
+        out_folder = output.out_folder
+        good_sigs = output.good_sigs
+        os.makedirs(out_folder, exist_ok = True)
+        mag_dat = pandas.read_csv(magstats)
+        files = []
+        for l in mag_dat['Unnamed: 0']:
+            if "unbinned" not in l:
+                files += [pjoin(folder, "clean_bins", l, l + ".fna")]
+        with open(mag_list, "w") as handle: 
+            handle.writelines([l + "\n" for l in files])
+        call("sourmash compute -k 31 --scaled 10000 -p 20 `cat {maglist} `".format(maglist = mag_list), shell = True)
+        
+        print("moving the sigs")
+        for f in tqdm(files) :
+            shutil.move(os.path.basename(f) + ".sig", out_folder)
+        
+        files = [pjoin(out_folder, os.path.basename(l)) + ".sig" for l in files]
+        
+        def correct(f):                                                                  
+            with open(f) as handle:                                                                                                                          
+                tt = json.load(handle)                                                                                                            
+                tt[0]['name'] = tt[0]['filename'].split("/")[-1].replace(".fna","")
+            with open(f,"w") as handle:
+                json.dump(tt,handle)
+        
+        print("correcting the names of the sigs")
+        for f in tqdm(files):
+              correct(f)
+
+        print("moving sigs of good sigs")
+        goods =  mag_dat.loc[logical_and(mag_dat.completeness > 30 , mag_dat.contamination < 5)]
+        for l in goods['Unnamed: 0']:
+            if "unbinned" not in l:
+                shutil.move(pjoin(out_folder, os.path.basename(l) + ".fna.sig"), good_sigs )
+        
+
+        with open(sig_list, "w") as handle: 
+            handle.writelines([l + "\n" for l in files])
+
 
 rule gtdbtk:
     input : magstats = "{path}/magstats.csv"
     output : taxfile = "{path}/gtdbtk/gtdb.gtdbtk.tax"
-    conda : "gtdbtk"
     threads : 20
     run :
         folder = os.path.dirname(output.taxfile)
@@ -133,8 +216,15 @@ rule gtdbtk:
 def process_hmm_file(f) :
 #    print("processing", f)
     domtblout_head = ["target_name", "target_accession", "target_len", "query_name" , "query_accession", "query_len" , "E-value","score-sequence" , "bias-sequence" , "nbr", "of","C-value", "I-value", "score-domain" , "bias-domain" , "hmm_from" , "hmm_to" , "ali_from" , "ali_to" , "env_from" , "env_to" , "acc" , "description_of_target"]
-    data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22), engine='python')
-    data = data.loc[data['E-value'] < 10e-9]
+    with open(f) as handle : 
+        dd = {i : { k: ff for k, ff in zip(domtblout_head, f.split()[:len(domtblout_head)])} for i,f in enumerate(handle) if not f.startswith("#")}
+    if len(dd) == 0 :
+        return {}
+    data = pandas.DataFrame.from_dict(dd, orient="index")
+#    data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22), engine='python')
+#    if len(data) > 0 and data['target_accession'][0] != '-':
+#        data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22))
+#    data = data.loc[data['E-value'] < 10e-9]
     pfams_dict = {p : [] for p in set(data['target_name'])}
     for a,b in data.iterrows():
         pfams_dict[b['target_name']] += [b['query_accession']]
@@ -148,56 +238,99 @@ def cov_table(wildcards):
 
 rule tax_table:
     input : cov_table = cov_table,
-            tax_table = "full_taxonomy.tax"
-    output : normed_mat = "{path}/normed_reads_mat.csv",
-             raw_mat = "{path}/reads_mats.csv"
+            tax_table = "{path}/full_taxonomy.tax",
+            stats = "{path}/magstats.csv",
+    output : bin_wise = "{path}/abundance_tables/abundance_per_bin.csv",
+             folder = "{path}/abundance_tables/"
     threads : 1
     run :
         import pandas
         from pandas import Series
+        import os 
+
         cov_table = input.cov_table
         tax_table = input.tax_table
+        stats = input.stats
+        folder = pjoin(wildcards.path, "clean_bins")
+        bin_wise = output.bin_wise
+        out_folder = output.folder
+
         covs = pandas.read_csv(cov_table, sep="\t", index_col = 0)
-        tax_dict = list(pandas.read_csv(tax_table, index_col=0).to_dict().values())[0]
-        tax_df = pandas.DataFrame.from_dict({ k : {l : vv.split("__")[-1] if vv != 'None' else '' for l, vv in zip(levels, v.split(";")) }for k, v in tax_dict.items()}, orient="index").fillna("")
+        stats_sheet = pandas.read_csv(stats)
+        bins =  list(stats_sheet['Unnamed: 0'])
 
-        levels = ['domain','phylum','class','order','family','genus']
-        unbinned = Series(['unbinned']*len(levels), index =levels)
-        lens = covs['contigLen']
-        covs = covs[[c for c in covs.columns if c.endswith(".bam")]]
-        reads = covs.apply(lambda l : l*lens)
-        reads.columns = [c.replace(".bam", "") for c in reads.columns]
-        print("normalize table")
+        clsts_file = pjoin(os.path.dirname(stats), "clusters.txt")
 
-        normed_reads = reads.apply(lambda l : l/sum(l), axis='index')
-        normed_reads['contig'] = normed_reads.index
-        melted_reads = normed_reads.melt(id_vars = 'contig', value_name="reads", var_name="sample")
-        
-        melted_reads['mab'] = [c.split(":")[0] for c in melted_reads.contig]
-        melted_reads = melted_reads.apply(lambda l : l.append(tax_df.loc[l.mab]) if "unbinned" not in l.mab else l.append(unbinned), axis=1)
-
-        value_dict = {g[0] : g[1].reads.sum() for g in melted_reads.groupby(['mab', 'sample'])}
-        contig_wise_table = pandas.DataFrame.from_dict({ sample : { k[0] : v for k, v in value_dict.items() if k[1] == sample}  for sample in  normed_reads.columns if sample != 'contig' })
-        contig_wise_table['mab'] = contig_wise_table.index
-
+        levels = ['superkingdom','phylum','class','order','family','genus', "species", "strain"]
+        tax_df = pandas.read_csv(tax_table, index_col=0).fillna("")
         clean_tax =  lambda s: Series([ss if ss != "" else ("undetermined" + last([tt for tt in s if tt ])) for ss in s], levels )
         last = lambda ll : ("_" + ll[-1]) if len(ll) > 0 else ""
 
         tax_df = tax_df.apply(clean_tax, axis=1)
 
-        melted_contig_read = contig_wise_table.melt(id_vars = 'mab', value_name="reads", var_name="sample")
-        melted_contig_read = melted_contig_read.apply(lambda l : l.append(tax_df.loc[l.mab]) if "unbinned" not in l.mab else l.append(unbinned), axis=1) 
+
+        if os.path.exists(clsts_file):
+            print("fixing name issues between pretty bin names and names of the assembly")
+            ass = os.path.dirname(cov_table).replace("/mapping",".fna")
+            m = hashlib.md5()
+            check_dict = {hashlib.md5(str(s.seq).encode('utf-8')).hexdigest() : s.id for s in tqdm(SeqIO.parse(ass, "fasta"))}
+
+            trans_map = { s.id : check_dict[hashlib.md5(str(s.seq).encode('utf-8')).hexdigest()] for b in tqdm(bins) for s in SeqIO.parse(pjoin(folder, b, b + ".fna"), "fasta")}
+            maps_trans = {v : k for k,v in trans_map.items()}
+
+            prefs2 = set("_".join(s.split("_")[:-1]) for s in covs.index)
+            assert len(prefs2) == 1
+            prefs2 = list(prefs2)[0] + "_bin-"
+
+            covs.index = [maps_trans.get(c,c).replace("bin-",prefs2) for c in covs.index]
+            covs = covs.loc[[c for c in covs.index if "/" in c]]
+            tax_df.index = [t.split("_")[-1].replace("bin-",prefs2) for t in tax_df.index]
+        else :
+            covs.index = covs.index
+
+
+
+        unbinned = Series(['unbinned']*len(levels), index =levels)
+        unclassified = Series(['undetermined']*len(levels), index =levels)
+
+        lens = covs['contigLen']
+        covs = covs[[c for c in covs.columns if c.endswith(".bam")]]
+        reads = covs.apply(lambda l : l*lens)
+        reads.columns = [c.replace(".bam", "") for c in reads.columns]
+        print("normalize table")
+        def get_tax(mab) :
+            if mab in tax_df.index :
+                return tax_df.loc[mab]
+            elif 'unbinned' in mab:
+                return unbinned
+            else :
+                return unclassified
+     
+        normed_reads = reads.apply(lambda l : l/sum(l), axis='index')
+        normed_reads['contig'] = normed_reads.index
+        normed_reads['mab'] = [c.split(":")[0] for c in normed_reads.contig]
+        normed_reads = normed_reads.apply(lambda l : l.append( get_tax(l.mab)) , axis=1)
+
+        melted_reads = normed_reads.melt(id_vars = ['contig', 'mab'] + levels, value_name="reads", var_name="sample")
+        
+        value_dict = {g[0] : g[1].reads.sum() for g in tqdm(melted_reads.groupby(['mab', 'sample']))}
+        contig_wise_table = pandas.DataFrame.from_dict({ sample : { k[0] : v for k, v in value_dict.items() if k[1] == sample}  for sample in  tqdm(normed_reads.columns) if sample not in ['contig'] + levels })
+        contig_wise_table['mab'] = contig_wise_table.index        
+        contig_wise_table = contig_wise_table.apply(lambda l : l.append( get_tax(l.mab)) , axis=1)
+
+
+        melted_contig_read = contig_wise_table.melt(id_vars = ['mab'] + levels , value_name="reads", var_name="sample")
 
         level_tables = {}
         for l in levels:
             value_dict = {g[0] : g[1].reads.sum() for g in melted_contig_read.groupby([l, "sample"])}
-            level_tables[l] = pandas.DataFrame.from_dict({ sample : { k[0] : v for k, v in value_dict.items() if k[1] == sample}  for sample in  normed_reads.columns if sample != 'contig' })
+            level_tables[l] = pandas.DataFrame.from_dict({ sample : { k[0] : v for k, v in value_dict.items() if k[1] == sample}  for sample in  normed_reads.columns if sample not in ['contig'] + levels })
             
-        contig_wise_table.to_csv("abundance_tables/abundance_per_bin.csv")
-        reads.to_csv("abundance_tables/raw_read_counts.csv")
-        normed_reads.to_csv("abundance_tables/abundance_per_contig.csv")
+        contig_wise_table.to_csv(bin_wise)
+        reads.to_csv(pjoin(out_folder, "raw_read_counts.csv"))
+        normed_reads.to_csv(pjoin(out_folder,"abundance_per_contig.csv"))
         for k, l in level_tables.items():
-            l.to_csv("abundance_tables/abundance_per_" + k + ".csv")
+            l.to_csv(pjoin(out_folder,"abundance_per_" + k + ".csv"))
 
 
 
@@ -211,6 +344,11 @@ rule hmmer_table :
              raw_mat = "{path}/pfam_covs.csv"
     threads : 1
     run :
+        import json
+        folder = input.folder 
+        cov_table = input.cov_table
+        normed_mat = output.normed_mat
+        raw_mat = output.raw_mat
         with open(input.pfam_sets)  as handle:
             big_dict = json.load(handle)
 
@@ -218,10 +356,9 @@ rule hmmer_table :
 
         stats_sheet = pandas.read_csv(input.stats)
         bins =  list(stats_sheet['Unnamed: 0'])
-
         prot2contig = {}
         for b in tqdm(bins):
-            f = pjoin(input.folder, b, b + ".gff")
+            f = pjoin(folder, b, b + ".gff")
             with open(f) as handle:
                 for line in handle:
                     if line == '##FASTA\n':
@@ -233,7 +370,11 @@ rule hmmer_table :
                         prot2contig[cds_id] = cont_id
 
         ctgs2pfam = {g + ":" +  prot2contig[k].split(":")[1] : v  for g,d in tqdm(big_dict.items()) for k, v in d.items()}
-        all_pfams = set(sum(ctgs2pfam.values(),[]))
+        all_pfams = set()
+        for g,d in tqdm(big_dict.items()):
+            for k, v in d.items():
+                all_pfams = all_pfams.union(v)
+#        all_pfams = set(sum(ctgs2pfam.values(),[]))
         all_pfams_as_ctgs = {p : [] for p in all_pfams}
         for k, v in tqdm(ctgs2pfam.items()):
             for vv in v:
@@ -245,14 +386,14 @@ rule hmmer_table :
 
         if os.path.exists(clsts_file):
             print("fixing name issues between pretty bin names and names of the assembly")
-            ass = os.path.dirname(input.cov_table).replace("/mapping",".fna")
+            ass = os.path.dirname(cov_table).replace("/mapping",".fna")
             m = hashlib.md5()
             check_dict = {hashlib.md5(str(s.seq).encode('utf-8')).hexdigest() : s.id for s in tqdm(SeqIO.parse(ass, "fasta"))}
 
-            trans_map = { s.id : check_dict[hashlib.md5(str(s.seq).encode('utf-8')).hexdigest()] for b in tqdm(bins) for s in SeqIO.parse(pjoin(input.folder, b, b + ".fna"), "fasta")}
+            trans_map = { s.id : check_dict[hashlib.md5(str(s.seq).encode('utf-8')).hexdigest()] for b in tqdm(bins) for s in SeqIO.parse(pjoin(folder, b, b + ".fna"), "fasta")}
             maps_trans = {v : k for k,v in trans_map.items()}
 
-            prefs2 = set("_".join(s.split("_")[:-1]) for s in sum(all_pfams_as_ctgs.values(),[]))
+            prefs2 = set("_".join(s.split("_")[:-1]) for s in ctgs2pfam)
             assert len(prefs2) == 1
             prefs2 = list(prefs2)[0] + "_bin-"
 
@@ -271,7 +412,7 @@ rule hmmer_table :
         pfam_pandas.index = [p.split(".")[0] for p in pfam_pandas.index]
         pfam_pandas.columns = [c.replace(".bam", "") for c in pfam_pandas.columns]
 
-        pfam_pandas.to_csv(output.raw_mat)
+        pfam_pandas.to_csv(raw_mat)
 
         print("open pfam metadata")
         with open("/home/moritz/dbs/pfam/pfam_dict.csv") as handle:
@@ -284,7 +425,7 @@ rule hmmer_table :
         print("normalize table")
         norm_factor = pfam_pandas.loc[sc_pfams].mean().to_dict()
         normed_pfam_pandas = pandas.DataFrame.from_dict({ k : {kk : vv/norm_factor[k] for kk, vv in v.items()} for k, v in pfam_pandas.to_dict().items()})
-        normed_pfam_pandas.to_csv(output.normed_mat)
+        normed_pfam_pandas.to_csv(normed_mat)
 
 
 rule hmmer_all_mags :
@@ -367,7 +508,7 @@ rule annotate_all_mags :
 
 
         print("computing stats")
-        out_dict = { prefix(b) : mag_stat(pjoin(output.folder, prefix(b)), prefix(b)) for b in bins}
+        out_dict = { prefix(b) : mag_stat(pjoin(output.folder, prefix(b)), prefix(b)) for b in tqdm(bins)}
 
         DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
 
