@@ -1,5 +1,6 @@
 from os.path import join as pjoin
 import os
+from os.path import realpath
 import uuid
 from subprocess import Popen, PIPE, call
 from Bio import SeqIO
@@ -11,29 +12,25 @@ import hashlib
 #shell.prefix("module load bioinfo-tools bbmap samtools  BioPerl prokka    perl_modules; ")
 
 
+def process_checkm_file(file) : 
+    checkm_fields = ['Bin Id', 'Marker lineage', 'UID', '# genomes', '# markers', '# marker sets', '0', '1', '2', '3', '4', '5+'\
+, 'Completeness', 'Contamination', 'Strain heterogeneity']
+    with open(file) as handle:
+        dat = handle.readlines()
+    dat = {l.split()[0] : {k : v for k,v in zip(checkm_fields, l[:-1].split() ) } for l in dat[3:-1]}
+    out_dict = {}
+    for k, v in dat.items():
+        out_dict[k] = {}
+        out_dict[k]['completeness'] = float(dat[k]['Completeness'])
+        out_dict[k]['contamination'] = float(dat[k]['Contamination'])
+        out_dict[k]['taxo:checkm'] = dat[k]['Marker lineage']
+        out_dict[k]['strain_heterogeneity'] = float(dat[k]['Strain heterogeneity'])
+    return out_dict
+
 def mag_stat(folder, bin_head) :
-    bin_checkm = pjoin(folder , "checkm.txt")
     bin_genome= pjoin(folder ,bin_head + ".fna")
     bin_proteom = pjoin(folder ,bin_head + ".faa")
     out_dict = {}
-
-    if "unbinned" not in bin_head:
-        checkm_fields = ['Bin Id', 'Marker lineage', 'UID', '# genomes', '# markers', '# marker sets', '0', '1', '2', '3', '4', '5+', 'Completeness', 'Contamination', 'Strain heterogeneity']
-        with open(bin_checkm) as handle:
-            dat = handle.readlines()
-        dat = {l.split()[0] : {k : v for k,v in zip(checkm_fields, l[:-1].split() ) } for l in dat[3:-1]}
-        dat = dat[bin_head] 
-
-        out_dict['completeness'] = float(dat['Completeness'])
-        out_dict['contamination'] = float(dat['Contamination'])
-        out_dict['taxo:checkm'] = dat['Marker lineage']
-        out_dict['strain_heterogeneity'] = float(dat['Strain heterogeneity'])
-    else :
-        out_dict['completeness'] = None
-        out_dict['contamination'] = None
-        out_dict['taxo:checkm'] = 'Unbinned'
-        out_dict['strain_heterogeneity'] = None
-
 
     with open( bin_genome) as handle:
         fna = [s for s in SeqIO.parse(handle, "fasta")]
@@ -45,7 +42,6 @@ def mag_stat(folder, bin_head) :
     out_dict['nb_proteins'] = len(faa)
     out_dict['coding_density'] = (3.0*sum([len(s.seq) for s in faa]))/sum([len(s.seq) for s in fna])
     out_dict['GC'] = float(sum([str(s.seq).count("G")+str(s.seq).count("C") for s in fna]))/out_dict['length']
-    #out_dict['taxo:phylophlan'] = tax[bin_id]
     return out_dict
 
 rule phylophlan :
@@ -115,7 +111,7 @@ rule merg_classes :
             head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
   
             with open(sourmash_combo_class) as handle : 
-                sourmash_tax = {l.split(",")[0] : l[:-1] for l in handle.readlines() if not l.startswith('ID') and "nomatch" not in l}
+                sourmash_tax = {l.split(",")[0] : re.sub("[dpcofgs]__", '', l[:-1]) for l in handle.readlines() if not l.startswith('ID') and "nomatch" not in l}
             confused = {k :  v.replace(",disagree", "") for k, v in sourmash_tax.items() if "disagree" in v}
             sourmash_tax = {k :  v.replace(",found", "") for k, v in sourmash_tax.items() if "found" in v}
             sourmash_tax.update(gtdbtk_tax)
@@ -213,26 +209,25 @@ rule gtdbtk:
             handle.writelines([head_line] + arc_data + bac_data)
     
 
-def process_hmm_file(f) :
+def process_hmm_file(f, cutoff) :
 #    print("processing", f)
     domtblout_head = ["target_name", "target_accession", "target_len", "query_name" , "query_accession", "query_len" , "E-value","score-sequence" , "bias-sequence" , "nbr", "of","C-value", "I-value", "score-domain" , "bias-domain" , "hmm_from" , "hmm_to" , "ali_from" , "ali_to" , "env_from" , "env_to" , "acc" , "description_of_target"]
     with open(f) as handle : 
         dd = {i : { k: ff for k, ff in zip(domtblout_head, f.split()[:len(domtblout_head)])} for i,f in enumerate(handle) if not f.startswith("#")}
     if len(dd) == 0 :
-        return {}
+        return ({},pandas.DataFrame())
     data = pandas.DataFrame.from_dict(dd, orient="index")
 #    data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22), engine='python')
 #    if len(data) > 0 and data['target_accession'][0] != '-':
 #        data = pandas.read_csv(f, delim_whitespace=True, comment="#", names=domtblout_head[:-1], usecols=range(0,22))
-#    data = data.loc[data['E-value'] < 10e-9]
     pfams_dict = {p : [] for p in set(data['target_name'])}
-    for a,b in data.iterrows():
+    for a,b in data.loc[data['I-value'].apply(float) < cutoff].iterrows():
         pfams_dict[b['target_name']] += [b['query_accession']]
-    return pfams_dict
+    return (pfams_dict, data)
 
 def cov_table(wildcards):
     if "1500_" in wildcards.path or "1000_" in wildcards.path:
-        return pjoin(wildcards.path,"../../filtered_assembly/mapping/map_table.tsv")
+        return realpath(pjoin(wildcards.path,"../../filtered_assembly/mapping/map_table.tsv"))
     else :
         return pjoin(wildcards.path, "FullAssembly/mapping/map_table.tsv")
 
@@ -349,8 +344,10 @@ rule hmmer_table :
         cov_table = input.cov_table
         normed_mat = output.normed_mat
         raw_mat = output.raw_mat
-        with open(input.pfam_sets)  as handle:
+        pfam_sets = input.pfam_sets
+        with open(pfam_sets)  as handle:
             big_dict = json.load(handle)
+
 
         print("parsing gffs to link contigs to CDSs")
 
@@ -431,7 +428,8 @@ rule hmmer_table :
 rule hmmer_all_mags :
     input : stats = "{path}/magstats.csv",
             folder = "{path}/clean_bins",
-    output : pfam_sets = "{path}/pfam_sets.json"
+    output : pfam_sets = "{path}/pfam_sets.json",
+             raw_hits = "{path}/raw_pfam_hits.csv"
     threads : 20
     run :
         import json
@@ -456,29 +454,27 @@ rule hmmer_all_mags :
 
         pool.map(f, commands)
 
-        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch")) for b in tqdm(bins)}
-
+        big_dict = {b : process_hmm_file(pjoin(input.folder, b, b + ".pfam.hmmsearch"), config['mags']['pfam_cutoff']) for b in tqdm(bins)}
+        all_raw_hits = pandas.concat([ v[1]  for v in big_dict.values()], axis = 0)
+        big_dict = {k : v[0] for k, v in big_dict.items()}
         print("dumping PFAM dict")
-
+        all_raw_hits.to_csv(output.raw_hits)
         with open(output.pfam_sets, "w") as handle:
             json.dump(big_dict, handle)
 
-
-rule annotate_all_mags :
+rule prokka_all: 
     input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins",
             unbinned = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins/bin-unbinned.fasta"
     output : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
-             stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
-    threads : 16
-    run :
+            flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
+    threads : 20 
+    run : 
         from pathos.multiprocessing import ProcessingPool as Pool
         bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
         if not os.path.exists(output.folder):
             os.makedirs(output.folder)
 
-        prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins} 2> /dev/null > /dev/null"
-        checkm_line = "checkm lineage_wf -t {threads} -x fna {temp_out}/{prefix} {temp_out}/{prefix}/data > {temp_out}/{prefix}/checkm.txt 2> /dev/null"
-        out_dict = {}
+        prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins} 2> /dev/null > /dev/null; echo {prefix} done"
 
         pool = Pool(threads)
 
@@ -488,9 +484,6 @@ rule annotate_all_mags :
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
             prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
             call(prok, shell = True)
-            if meta == "":
-                call(checkm_line.format(threads= 1, temp_out = config['general']['temp_dir'], prefix = prefix), shell = True)
-                shutil.rmtree(pjoin(config['general']['temp_dir'], prefix, "data"))
 
             if os.path.exists(pjoin(output.folder,prefix)):
                 shutil.rmtree(pjoin(output.folder,prefix))
@@ -499,18 +492,70 @@ rule annotate_all_mags :
 
 
         prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = bin[:-6].replace("_", "-" ))
-        run_bins = [b for b in bins if not os.path.exists("{temp_out}/{prefix}/checkm.txt".format(temp_out = output.folder, prefix = prefix(b)))]
-        if os.path.exists("{temp_out}/{prefix}/{prefix}.faa".format(temp_out = output.folder, prefix = prefix("bin-unbinned.fasta"))):
+
+        run_bins = [b for b in bins if not os.path.exists("{temp_out}/{prefix}/{prefix}.faa".format(temp_out = output.folder, prefix = prefix(b)))]
+
+        if "bin-unbinned.fasta" in run_bins:
             run_bins.remove("bin-unbinned.fasta")
-        print(run_bins)
+            run_bins = ["bin-unbinned.fasta"] + run_bins
+
+        print(len(run_bins), " bins to predict with prokka")
 
         pool.map(f, run_bins)
+        call("touch "  +  output.flag, shell=True)
 
+rule checkm_all :
+    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
+            flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
+    output : chckm = "{path}/{set}/assemblies/{assembler}/binning/{binner}/checkm.txt"
+    threads : 20 
+    run :
+        bins = [f for f in os.listdir(input.folder)]
 
-        print("computing stats")
-        out_dict = { prefix(b) : mag_stat(pjoin(output.folder, prefix(b)), prefix(b)) for b in tqdm(bins)}
+        temp_folder = pjoin(config['general']['temp_dir'], "checkm_" + wildcards.set)
+        print("copying bins to temp" )
+        if not os.path.exists(temp_folder):
+            os.makedirs(temp_folder)
 
-        DataFrame.from_dict(out_dict, orient = 'index').to_csv(output.stats)
+        for b in tqdm(bins):
+            if "unbinned" not in b:
+                shutil.copy(pjoin(input.folder, b, b +".fna"), temp_folder)
+
+        checkm_line = "checkm lineage_wf -t {threads} -x fna {folder} {folder}/data > {outfile} "
+
+        call(checkm_line.format(threads= threads, folder = temp_folder, outfile = output.chckm), shell = True)       
+
+rule MAG_stats :
+    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
+            flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated",
+            checkm = "{path}/{set}/assemblies/{assembler}/binning/{binner}/checkm.txt"
+    output :stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
+    threads : 1
+    run :
+        from tqdm import tqdm 
+        bins = [f for f in os.listdir(input.folder)]
+
+        print(len(bins), " bins to process")
+
+        print("computing basic MAG stats")
+        stat_dict = { b : mag_stat(pjoin(input.folder, b), b) for b in tqdm(bins)}
+
+        print("parsing checkm data")
+        checkm_dict = process_checkm_file(input.checkm)
+
+        print("parsing taxonomy")
+#        with open(input.full_class, "w" ) as handle:
+#            handle.readlines([head_line] + [s + "\n" for s in sourmash_tax.values()])
+#            head_line = handle.readline()[:-1].split()[1:]
+#            taxo_dict = {l.split()[0] : {k :v for k,v in zip(head_line , l.split(1:))} for l in handle}
+
+        for k, v in stat_dict.items():
+            if checkm_dict.get(k):
+                v.update(checkm_dict.get(k))
+#            if taxo_dict.get(k):
+#            v.update(taxo_dict.get(k))
+
+        DataFrame.from_dict(stat_dict, orient = 'index').to_csv(output.stats)
 
 
 
@@ -538,15 +583,3 @@ rule filter_good_MAGs :
 
 
 
-rule MAG_stats:
-    input : bin_file = "{path}/{name}/{assembler}/MAGs/metabat_{name}_unbinned/{name}_unbinned.checkm",
-    threads : 1
-    run :
-
-
-#        with open("phylophlan_tax.txt") as handle:
-#            tax = [l.split()[:2] for l in handle.readlines()]
-#            tax = {t[0] : ":".join([tt for tt in t[1].split(".") if "?" not in tt ]) for t in tax if "all_samples-" in t[0]}
-
-        dat = dict([process_bin(p) for p in tqdm(bin_files)])
-        DataFrame.from_dict(dat, orient = 'index').to_csv(out_file)

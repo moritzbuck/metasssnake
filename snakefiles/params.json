@@ -1,15 +1,21 @@
 {
   "general" : {
     "home" : "/crex/proj/uppstore2018116/moritz6/",
+    "raw_folder" :  "/crex/proj/uppstore2018116/moritz6/0000_raws/0100_reads/genomic2/",
     "threads" : 20,
     "temp_dir" : "/tmp/"
   },
-  "assembly" : {
+  "assembling" : {
+    "filter_cutoff" : 1500,
     "coas_files_dir" : "/crex/proj/uppstore2018116/moritz6/0000_raws/0200_coasses/"
   },
   "binning" : {
-    "bin_mapping_libs" : 12,
-    "bin_map_min" : 15
+    "metabat" : {
+	"min_len" : 1500,
+	"min_bin_size" : 10000,
+	"maxP" : 93,
+	"minS" : 50
+    }
   },
   "read_processing" : {
     "trimmomatic" : {
@@ -53,5 +59,9 @@
       "diagnostic" :  {
 	  "reads" : 100000
       }
+  },
+  "mags" : { 
+            "pfams_db" : "/home/moritz/dbs/pfam/Pfam-A.hmm",
+            "pfam_cutoff" : 1e-30
   }
 }
