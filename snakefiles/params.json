@@ -1,15 +1,10 @@
 {
   "general" : {
-    "home" : "/crex/proj/uppstore2018116/moritz6/",
+    "home" : "/crex/proj/uppstore2018126/moritz/0028_pepparkakor/",
+    "raw_folder" : "/crex/proj/uppstore2018126/moritz/0028_pepparkakor/0000_raws/",
+    "temp_dir" : "/tmp/",
     "threads" : 20,
-    "temp_dir" : "/tmp/"
-  },
-  "assembly" : {
-    "coas_files_dir" : "/crex/proj/uppstore2018116/moritz6/0000_raws/0200_coasses/"
-  },
-  "binning" : {
-    "bin_mapping_libs" : 12,
-    "bin_map_min" : 15
+    "exp_json" : "/home/moritz/proj_folder/uppstore2018126/moritz/0028_pepparkakor/8000_scripts/exp_sets.json" 
   },
   "read_processing" : {
     "trimmomatic" : {
@@ -36,22 +31,35 @@
   "gtdb" : {
     "download" : {
       "remote" : "https://data.ace.uq.edu.au/public/gtdb/release86/bac_metadata_r86.tsv",
-      "local" : "/home/moritz/dbs/bac_metadata_r86.tsv",
+      "local" : "/home/moritzbuck/data/bac_metadata_r86.tsv",
       "genbank_remote" : "ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_genbank.txt",
       "refseq_remote" :"ftp://ftp.ncbi.nlm.nih.gov/genomes/ASSEMBLY_REPORTS/assembly_summary_refseq.txt",
-      "genbank_local" : "/home/moritz/dbs/assembly_summary_genbank.txt",
-      "refseq_local" : "/home/moritz/dbs/assembly_summary_refseq.txt",
-      "uba" : "https://data.ace.uq.edu.au/public/gtdb/release80/gtdb_uba_mags.tar.gz",
-      "uba_local" : "/home/moritz/dbs/UBA/",
+      "genbank_local" : "/home/moritzbuck/data/assembly_summary_genbank.txt",
+      "refseq_local" : "/home/moritzbuck/data/assembly_summary_refseq.txt",
       "retries" : 5
     },
     "hmmer" : {
-      "pfams_db" : "/home/moritz/dbs/pfam/Pfam-A.hmm"
+      "pfams_db" : "/scratch/Pfam-A.hmm"
     }
   },
   "mapping" : {
       "diagnostic" :  {
 	  "reads" : 100000
       }
+  },
+  "binning" : {
+    "metabat" : {
+	"min_len" : 1500,
+	"min_bin_size" : 10000,
+	"maxP" : 93,
+	"minS" : 50
+    }
+  },
+  "assembling" : {
+      "filter_cutoff" : 1500 
+  },
+  "mags" : { 
+            "pfams_db" : "/home/moritz/dbs/pfam/Pfam-A.hmm"
   }
+
 }

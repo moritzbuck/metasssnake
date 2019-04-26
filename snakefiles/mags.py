@@ -115,7 +115,7 @@ rule merg_classes :
             head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
   
             with open(sourmash_combo_class) as handle : 
-                sourmash_tax = {l.split(",")[0] : l[:-1] for l in handle.readlines() if not l.startswith('ID') and "nomatch" not in l}
+                sourmash_tax = {l.split(",")[0] : re.sub("[dpcofgs]__", '', l[:-1]) for l in handle.readlines() if not l.startswith('ID') and "nomatch" not in l}
             confused = {k :  v.replace(",disagree", "") for k, v in sourmash_tax.items() if "disagree" in v}
             sourmash_tax = {k :  v.replace(",found", "") for k, v in sourmash_tax.items() if "found" in v}
             sourmash_tax.update(gtdbtk_tax)
