@@ -8,7 +8,6 @@ rule clean_metabat:
         clusters = "{path}/binning/metabat/clusters.txt",
         assembly = "{path}/filtered_assembly.fna",
     output :
-        folder = "{path}/binning/metabat/bins",
         unbinned = "{path}/binning/metabat/bins/bin-unbinned.fasta"
     run :
         import os
@@ -16,6 +15,7 @@ rule clean_metabat:
         from os.path import join as pjoin
         from tqdm import tqdm
 
+        out_folder = os.path.dirname(output.unbinned)
         with open(input.clusters) as handle :
             clsts = { l.split()[0] : l.split()[1] for l in handle}
         bad_ids = set(clsts.values())
@@ -39,10 +39,10 @@ rule clean_metabat:
                 s.id = "bin-" + b_id + ":" + pos
                 s.description = ""
                 seqs[c] += [s]
-        if not os.path.exists(output.folder):
-            os.makedirs(output.folder)
+        if not os.path.exists(out_folder):
+            os.makedirs(out_folder)
         for k, v in seqs.items():
-            SeqIO.write(v, pjoin(output.folder, "bin-" + str(k).zfill(zero) + ".fasta"), "fasta")
+            SeqIO.write(v, pjoin(out_folder, "bin-" + str(k).zfill(zero) + ".fasta"), "fasta")
 
 
 

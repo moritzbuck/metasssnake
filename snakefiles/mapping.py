@@ -7,15 +7,16 @@ from subprocess import Popen, PIPE
 def all_samples(wildcards):
         import pandas
         sets = []
-        if config['general'].get('exp_json'):
-            with open(config['general'].get('exp_json')) as handle:
-                sets = json.load(handle)
-                sample = [ f for f in wildcards.path.split("/") if f in  sum(sets.values(),[]) ]
+        if config['general'].get('sample_groups'):
+            with open(config['general'].get('sample_groups')) as handle:
+                sets = {l.split(",")[0] : l.split(",")[1][:-1] for l in handle.readlines()}
+                sample = [ f for f in wildcards.path.split("/") if f in  list(sets.keys()) ]
+
                 assert len(sample) < 2
                 if len(sample) == 1:
-                    sety = [k for k, v in sets.items() if sample[0] in v]
-                    sample_from_sets = sets[sety[0]]
-                    return sample_from_sets
+                        sample = sample[0]
+                        samples = [s for s,k in sets.items() if k == sets[sample]]
+                        return samples
 
         coas_sets = [f.split(".")[0] for f in os.listdir("9000_metadata/9100_samplesets/")]
         coas = [ f for f in wildcards.path.split("/") if f in  coas_sets ]
@@ -31,6 +32,7 @@ def all_samples(wildcards):
 
 def all_bams(wildcards):
     samples = all_samples(wildcards)
+
     path = "{path}/mapping/bams/".format(path = wildcards.path)
     return [pjoin(path,s + ".bam") for s in samples]
 

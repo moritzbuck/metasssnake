@@ -84,15 +84,26 @@ rule mash_lca:
             sig_list = "{path}/sourmash/sigs.list",
     output :sourmash_combo_class = "{path}/sourmash/combo.sourmash.tax",
             sourmash_local_db = "{path}/sourmash/local.lca.json"
-    conda : "smash"
     shell :
         """
         folder=`dirname {output.sourmash_combo_class}`
         echo "extra db :" {params}
         cp {input.gtdb_class} $folder/db.tax
         sed -i 's/[dpcofgs]__//g' $folder/db.tax
-        sourmash lca index  $folder/db.tax {output.sourmash_local_db}  $folder/good_sigs/*.sig
-        sourmash lca classify --db {output.sourmash_local_db} {params} --query  $folder/sigs/*.sig > {output.sourmash_combo_class}
+        if [ -z "$(ls -A $folder/good_sigs/)" ];
+        then
+           touch {output.sourmash_local_db}
+           db_end="{params}"
+        else
+           sourmash lca index  $folder/db.tax {output.sourmash_local_db}  $folder/good_sigs/*.sig
+           db_end="{output.sourmash_local_db} {params}"
+        fi
+        if [ -z "$(ls -A $folder/sigs/)" ];
+        then
+           touch {output.sourmash_combo_class}
+        else
+           sourmash lca classify --db $db_end --query  $folder/sigs/*.sig > {output.sourmash_combo_class}
+        fi
         """
 
 rule merg_classes : 
@@ -122,34 +133,45 @@ rule merg_classes :
 rule mash_mags:
     input : magstats = "{path}/magstats.csv"
     output : sig_list = "{path}/sourmash/sigs.list",
-             mag_list = "{path}/sourmash/mags.list",
-             out_folder = "{path}/sourmash/sigs/",
-             good_sigs = "{path}/sourmash/good_sigs/"
-#    conda : "smash"
+             mag_list = "{path}/sourmash/mags.list"
     threads : 20
     run :
         import shutil
         from numpy import logical_and
+        
         magstats = input.magstats
         sig_list = output.sig_list
         mag_list = output.mag_list
         folder = wildcards.path 
-        out_folder = output.out_folder
-        good_sigs = output.good_sigs
+        out_folder = pjoin(wildcards.path, "sourmash", "sigs")
+        good_sigs = pjoin(wildcards.path, "sourmash", "good_sigs")
+        
+        os.makedirs(pjoin(folder,"sourmash"), exist_ok = True)
         os.makedirs(out_folder, exist_ok = True)
+        os.makedirs(good_sigs, exist_ok = True)
+
         mag_dat = pandas.read_csv(magstats)
         files = []
         for l in mag_dat['Unnamed: 0']:
             if "unbinned" not in l:
                 files += [pjoin(folder, "clean_bins", l, l + ".fna")]
+
+        cwd = os.getcwd()
         with open(mag_list, "w") as handle: 
-            handle.writelines([l + "\n" for l in files])
-        call("sourmash compute -k 31 --scaled 10000 -p 20 `cat {maglist} `".format(maglist = mag_list), shell = True)
+            handle.writelines([pjoin(cwd,l) + "\n" for l in files])
+
+        cwd = os.getcwd()
+        os.chdir(out_folder)
         
-        print("moving the sigs")
-        for f in tqdm(files) :
-            shutil.move(os.path.basename(f) + ".sig", out_folder)
+        if len(files) > 0:
+            call("sourmash compute -k 31 --scaled 10000 -p 20 `cat {maglist} `".format(maglist = pjoin(cwd , mag_list)), shell = True)
         
+#        print("moving the sigs")
+#        for f in tqdm(files) :
+#            shutil.move(os.path.basename(f) + ".sig", out_folder)
+
+        os.chdir(cwd) 
+
         files = [pjoin(out_folder, os.path.basename(l)) + ".sig" for l in files]
         
         def correct(f):                                                                  
@@ -161,15 +183,18 @@ rule mash_mags:
         
         print("correcting the names of the sigs")
         for f in tqdm(files):
-              correct(f)
+            correct(f)
+
+        for f in os.listdir(good_sigs):
+            os.remove(pjoin(good_sigs, f))
 
         print("moving sigs of good sigs")
-        goods =  mag_dat.loc[logical_and(mag_dat.completeness > 30 , mag_dat.contamination < 5)]
-        for l in goods['Unnamed: 0']:
-            if "unbinned" not in l:
-                shutil.move(pjoin(out_folder, os.path.basename(l) + ".fna.sig"), good_sigs )
+        if "completness" in mag_dat.columns:
+            goods =  mag_dat.loc[logical_and(mag_dat.completeness > 30 , mag_dat.contamination < 5)]
+            for l in goods['Unnamed: 0']:
+                if "unbinned" not in l:
+                    shutil.move(pjoin(out_folder, os.path.basename(l) + ".fna.sig"), good_sigs )
         
-
         with open(sig_list, "w") as handle: 
             handle.writelines([l + "\n" for l in files])
 
@@ -189,22 +214,31 @@ rule gtdbtk:
         identify_line = "gtdbtk identify --genome_dir {path} --out_dir {path}/temp -x fna --cpus {threads}"
         align_line = "gtdbtk align --identify_dir {path}/temp --out_dir {path}/temp --cpus {threads} "
         classify_line = "gtdbtk classify --genome_dir {path} --align_dir {path}/temp --out_dir {path}/temp --cpus 1"
+        classify_wf_line = "gtdbtk classify_wf --genome_dir {path} --out_dir {path}/temp --cpus {threads}"
+        if os.path.exists(pjoin(folder, "temp")):
+            shutil.rmtree(pjoin(folder, "temp"))
 
-        call(identify_line.format(threads= threads, path = folder), shell = True)
-        call(align_line.format(threads= threads, path = folder), shell = True)
-        call(classify_line.format(threads= threads, path = folder), shell = True)
+#        call(identify_line.format(threads= threads, path = folder), shell = True)
+#        call(align_line.format(threads= threads, path = folder), shell = True)
+#        call(classify_line.format(threads= threads, path = folder), shell = True)
+
+        call(classify_wf_line.format(threads= threads, path = folder), shell = True)
 
         for f in os.listdir(folder):
             if f.endswith(".fna"):
                 os.remove(pjoin(folder, f))
 
         head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
-        with open(pjoin(folder, "temp", "gtdbtk.ar122.summary.tsv")) as handle:
-            arc_data = [l.split('\t')[0:2] for l in handle.readlines()[1:]]
-            arc_data = [t[0] + "," + t[1].replace(";",",") + ",\n"  for t in arc_data]
-        with open(pjoin(folder, "temp", "gtdbtk.bac120.summary.tsv")) as handle:
-            bac_data = [l.split('\t')[0:2] for l in handle.readlines()[1:]]
-            bac_data = [t[0] + "," + t[1].replace(";",",") + ",\n"  for t in bac_data]
+        arc_data = []
+        bac_data = []
+        if os.path.exists(pjoin(folder, "temp", "gtdbtk.ar122.summary.tsv")):
+            with open(pjoin(folder, "temp", "gtdbtk.ar122.summary.tsv")) as handle:
+                arc_data = [l.split('\t')[0:2] for l in handle.readlines()[1:]]
+                arc_data = [t[0] + "," + t[1].replace(";",",") + ",\n"  for t in arc_data]
+        if os.path.exists(pjoin(folder, "temp", "gtdbtk.bac120.summary.tsv")):
+            with open(pjoin(folder, "temp", "gtdbtk.bac120.summary.tsv")) as handle:
+                bac_data = [l.split('\t')[0:2] for l in handle.readlines()[1:]]
+                bac_data = [t[0] + "," + t[1].replace(";",",") + ",\n"  for t in bac_data]
         with open(output.taxfile, "w") as handle:
             handle.writelines([head_line] + arc_data + bac_data)
     
@@ -345,13 +379,15 @@ rule hmmer_table :
         normed_mat = output.normed_mat
         raw_mat = output.raw_mat
         pfam_sets = input.pfam_sets
+        stats = input.stats
+        
         with open(pfam_sets)  as handle:
             big_dict = json.load(handle)
 
 
         print("parsing gffs to link contigs to CDSs")
 
-        stats_sheet = pandas.read_csv(input.stats)
+        stats_sheet = pandas.read_csv(stats)
         bins =  list(stats_sheet['Unnamed: 0'])
         prot2contig = {}
         for b in tqdm(bins):
@@ -378,8 +414,8 @@ rule hmmer_table :
                 all_pfams_as_ctgs[vv] += [k]
 
         print("open coverage file")
-        covs = pandas.read_csv(input.cov_table, sep="\t")
-        clsts_file = pjoin(os.path.dirname(input.stats), "clusters.txt")
+        covs = pandas.read_csv(cov_table, sep="\t")
+        clsts_file = pjoin(os.path.dirname(stats), "clusters.txt")
 
         if os.path.exists(clsts_file):
             print("fixing name issues between pretty bin names and names of the assembly")
@@ -463,16 +499,17 @@ rule hmmer_all_mags :
             json.dump(big_dict, handle)
 
 rule prokka_all: 
-    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins",
-            unbinned = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins/bin-unbinned.fasta"
-    output : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
-            flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
+    input :  unbinned = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins/bin-unbinned.fasta"
+    output : flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
     threads : 20 
     run : 
         from pathos.multiprocessing import ProcessingPool as Pool
-        bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
-        if not os.path.exists(output.folder):
-            os.makedirs(output.folder)
+        in_folder = os.path.dirname(input.unbinned) 
+        bins = [f for f in os.listdir(in_folder) if f.endswith(".fasta")]
+        folder = in_folder.replace("/bins", "/clean_bins")
+
+        if not os.path.exists(folder):
+            os.makedirs(folder)
 
         prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins} 2> /dev/null > /dev/null; echo {prefix} done"
 
@@ -482,18 +519,18 @@ rule prokka_all:
             meta = "--metagenome" if b == "bin-unbinned.fasta" else ""
             b_name = b[:-6].replace("_", "-" )
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
-            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
+            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(in_folder, b) )
             call(prok, shell = True)
 
-            if os.path.exists(pjoin(output.folder,prefix)):
-                shutil.rmtree(pjoin(output.folder,prefix))
+            if os.path.exists(pjoin(folder,prefix)):
+                shutil.rmtree(pjoin(folder,prefix))
 
-            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
+            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), folder)
 
 
         prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = bin[:-6].replace("_", "-" ))
 
-        run_bins = [b for b in bins if not os.path.exists("{temp_out}/{prefix}/{prefix}.faa".format(temp_out = output.folder, prefix = prefix(b)))]
+        run_bins = [b for b in bins if not os.path.exists("{temp_out}/{prefix}/{prefix}.faa".format(temp_out = folder, prefix = prefix(b)))]
 
         if "bin-unbinned.fasta" in run_bins:
             run_bins.remove("bin-unbinned.fasta")
@@ -505,40 +542,41 @@ rule prokka_all:
         call("touch "  +  output.flag, shell=True)
 
 rule checkm_all :
-    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
-            flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
+    input : flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
     output : chckm = "{path}/{set}/assemblies/{assembler}/binning/{binner}/checkm.txt"
     threads : 20 
     run :
-        bins = [f for f in os.listdir(input.folder)]
+        bin_folder = input.flag.replace(".all_annotated", "clean_bins")
+        bins = [f for f in os.listdir(bin_folder)]
 
         temp_folder = pjoin(config['general']['temp_dir'], "checkm_" + wildcards.set)
         print("copying bins to temp" )
-        if not os.path.exists(temp_folder):
-            os.makedirs(temp_folder)
+        if os.path.exists(temp_folder):
+            shutil.rmtree(temp_folder)
+        os.makedirs(temp_folder)
 
         for b in tqdm(bins):
             if "unbinned" not in b:
-                shutil.copy(pjoin(input.folder, b, b +".fna"), temp_folder)
+                shutil.copy(pjoin(bin_folder, b, b +".fna"), temp_folder)
 
         checkm_line = "checkm lineage_wf -t {threads} -x fna {folder} {folder}/data > {outfile} "
 
         call(checkm_line.format(threads= threads, folder = temp_folder, outfile = output.chckm), shell = True)       
 
 rule MAG_stats :
-    input : folder = "{path}/{set}/assemblies/{assembler}/binning/{binner}/clean_bins",
-            flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated",
+    input : flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated",
             checkm = "{path}/{set}/assemblies/{assembler}/binning/{binner}/checkm.txt"
     output :stats = "{path}/{set}/assemblies/{assembler}/binning/{binner}/magstats.csv"
     threads : 1
     run :
         from tqdm import tqdm 
-        bins = [f for f in os.listdir(input.folder)]
+        bin_folder = input.flag.replace(".all_annotated", "clean_bins")
+        bins = [f for f in os.listdir(bin_folder)]
 
         print(len(bins), " bins to process")
 
         print("computing basic MAG stats")
-        stat_dict = { b : mag_stat(pjoin(input.folder, b), b) for b in tqdm(bins)}
+        stat_dict = { b : mag_stat(pjoin(bin_folder, b), b) for b in tqdm(bins)}
 
         print("parsing checkm data")
         checkm_dict = process_checkm_file(input.checkm)
@@ -552,6 +590,7 @@ rule MAG_stats :
         for k, v in stat_dict.items():
             if checkm_dict.get(k):
                 v.update(checkm_dict.get(k))
+                
 #            if taxo_dict.get(k):
 #            v.update(taxo_dict.get(k))
 
@@ -560,7 +599,6 @@ rule MAG_stats :
 
 
 rule filter_good_MAGs :
-# cutoff based on https://www.microbe.net/2017/12/13/why-genome-completeness-and-contamination-estimates-are-more-complicated-than-you-think/
     params : contamination = 5, completeness = 40
     input : path = "{path}/{name}/bins/{assembler}/MAGs",
             anots = "{path}/{name}/bins/{assembler}/annotated",
