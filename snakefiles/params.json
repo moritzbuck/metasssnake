@@ -72,7 +72,10 @@
       "merge" : {
      "completness" : 40,
      "contamination" : 5
-    }
+    },
+  "pre_cluster_proteom" : {
+     "id" : 0.95,
+     "length_cut" : 0.95
+   }
   }
 }
-

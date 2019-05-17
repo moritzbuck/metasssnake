@@ -43,4 +43,18 @@ rule merge:
            for b in tqdm(mag_list):
                os.symlink(pjoin(fold, "clean_bins", b, b + ".fna"), pjoin(genome_fold, "genomes", b + ".fna"))
                os.symlink(pjoin(fold, "clean_bins", b, b + ".faa"), pjoin(proteoms_fold, "proteoms", b + ".faa"))
-       
+       """for f in `ls proteoms/`; do echo $f ; cat proteoms/$f >> all_proteoms.faa ; done"""
+
+rule pre_cluster_proteom:
+    params : id = config['analyses']['pre_cluster_proteom']['id']
+    input : proteom = "4500_assembly_analysis/proteomics/all_proteoms.faa"
+    output : clusters = "4500_assembly_analysis/proteomics/all_proteoms.faa"
+    shell : """
+cd-hit -i all_proteoms.faa -o all_proteoms.cdhit -c 0.95 -M 0 -T 0 -d 0 -s 0.95
+"""
+
+rule self_diamond :
+    shell:"""
+diamond makedb --db all_proteoms.cdhit --in all_proteoms.cdhit
+diamond blastp --more-sensitive -p 20 -f 6 -q all_proteoms.cdhit --db all_proteoms.cdhit -o cdhit_vs_cdhi.more-sensitive.diamond
+"""
