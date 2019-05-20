@@ -1,4 +1,7 @@
 import pandas
+from subprocess import Popen, PIPE, call
+import os
+from tqdm import tqdm 
 
 rule merge:
    params : completness = config['analyses']['merge']['completness'],
@@ -46,15 +49,53 @@ rule merge:
        """for f in `ls proteoms/`; do echo $f ; cat proteoms/$f >> all_proteoms.faa ; done"""
 
 rule pre_cluster_proteom:
-    params : id = config['analyses']['pre_cluster_proteom']['id']
+    params : id = config['analyses']['pre_cluster_proteom']['id'],
+             length_cut = config['analyses']['pre_cluster_proteom']['length_cut'],
+             temp_folder = config['general']['temp_dir']
     input : proteom = "4500_assembly_analysis/proteomics/all_proteoms.faa"
-    output : clusters = "4500_assembly_analysis/proteomics/all_proteoms.faa"
-    shell : """
-cd-hit -i all_proteoms.faa -o all_proteoms.cdhit -c 0.95 -M 0 -T 0 -d 0 -s 0.95
-"""
+    output : clusters = "4500_assembly_analysis/proteomics/precluster/representative_seq.faa",
+             groups = "4500_assembly_analysis/proteomics/precluster/clusters.tsv"
+    threads : 20
+    run : 
+        temp_fasta = pjoin(params.temp_folder, "cdhit_temp.faa")
+        print("running cd-hit")
+        call("cd-hit -i {input} -o {output} -c {id} -M 0 -T {threads} -d 0 -s {cut}".format(input = input.proteom, output = temp_fasta, id = params.id, cut=params.length_cut, threads= threads), shell=True)
+        clstrs = []
+        record = []
+        print("parsing clusters")
 
+        with open(temp_fasta + ".clstr") as handle:
+            for l in tqdm(handle):
+                if l.startswith(">") :
+                    clstrs += [record]
+                    record = []
+                else : 
+                    dat = l.split()[2]
+                    record += [dat[1:][:-3]]
+        clstrs = clstrs[1:]
+        
+        print("outputing clusters")
+        with open(output.groups, "w") as outp:
+            outp.writelines(["Cluster_" + str(i+1) + "\t" + "\t".join(rec) + "\n" for i,rec in enumerate(clstrs)])
+        print("outputing fasta")
+        with open(output.clusters, "w") as outp :
+            counter = 0
+            with open(temp_fasta) as handle:
+                for l in tqdm(handle):
+                    if l.startswith(">") :
+                        if counter > 0 : 
+                            outp.writelines(record)
+                        counter += 1
+                        record = [ ">Cluster_" + str(counter) + "\n"]
+                    else : 
+                        record += [l]
+
+                    
 rule self_diamond :
-    shell:"""
-diamond makedb --db all_proteoms.cdhit --in all_proteoms.cdhit
-diamond blastp --more-sensitive -p 20 -f 6 -q all_proteoms.cdhit --db all_proteoms.cdhit -o cdhit_vs_cdhi.more-sensitive.diamond
+    input : clusters = "4500_assembly_analysis/proteomics/precluster/representative_seq.faa",
+    output : hits =  "4500_assembly_analysis/proteomics/precluster/selfhits.diamond"
+    threads : 20 
+    shell :"""
+diamond makedb --db {input.clusters} --in {input.clusters}
+diamond blastp --more-sensitive -p {threads} -f 6 -q {input.clusters} --db {input.clusters} -o {output.hits}
 """
