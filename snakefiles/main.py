@@ -14,11 +14,11 @@ config['general']['temp_dir'] = os.environ['SNIC_TMP']
 
 print("loading samples")
 
-samples = glob_wildcards("0000_raws/0100_reads/genomic2/{sample}_{lib}_R{dir}.fastq.gz").sample 
-#print(samples)
+samples = list(set(glob_wildcards("0000_raws/0100_reads/genomic2/{sample}_{lib}_R{dir}.fastq.gz").sample ))
+print("We have ", len(samples), "samples")
 
 coasses = glob_wildcards("9000_metadata/9100_samplesets/{coass}.txt").coass
-
+print("We have ", len(coasses), "coasses")
 
 print("loading snakefiles")
 
@@ -34,7 +34,7 @@ print("loading shell")
 
 shell.prefix("module load bioinfo-tools bbmap samtools BioPerl prokka  perl_modules; ")
 
-localrules: all,clean_metabat,filter_assembly,hmmer_table, MAG_stats,full_kaiju_by_level,all_kaijus
+localrules: all,clean_metabat,filter_assembly,hmmer_table, MAG_stats,full_kaiju_by_level,all_kaijus, mags2cogs
 
 """
 DIR=`pwd`
