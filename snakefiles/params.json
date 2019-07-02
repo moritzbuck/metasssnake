@@ -1,10 +1,12 @@
 {
   "general" : {
-    "home" : "/crex/proj/uppstore2018116/moritz6/",
-    "raw_folder" :  "/crex/proj/uppstore2018116/moritz6/0000_raws/0100_reads/genomic2/",
+    "home" : "/crex/proj/uppstore2018126/moritz/0028_pepparkakor/",
+    "raw_folder" : "/crex/proj/uppstore2018126/moritz/0028_pepparkakor/0000_raws/",
+    "temp_dir" : "/tmp/",
     "threads" : 20,
     "temp_dir" : "/tmp/",
-    "sample_groups" : "9000_metadata/sample_groups.csv"
+    "sample_groups" : "9000_metadata/sample_groups.csv",
+    "exp_json" : "/home/moritz/proj_folder/uppstore2018126/moritz/0028_pepparkakor/8000_scripts/exp_sets.json" 
   },
   "assembling" : {
     "filter_cutoff" : 1500,
@@ -62,7 +64,7 @@
   "mapping" : {
       "diagnostic" :  {
      "reads" : 100000
-      }
+      },
   },
   "mags" : { 
             "pfams_db" : "/home/moritz/dbs/pfam/Pfam-A.hmm",
