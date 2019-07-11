@@ -345,13 +345,14 @@ rule hmmer_table :
         normed_mat = output.normed_mat
         raw_mat = output.raw_mat
         pfam_sets = input.pfam_sets
+        stats = input.stats
         with open(pfam_sets)  as handle:
             big_dict = json.load(handle)
 
 
         print("parsing gffs to link contigs to CDSs")
 
-        stats_sheet = pandas.read_csv(input.stats)
+        stats_sheet = pandas.read_csv(stats)
         bins =  list(stats_sheet['Unnamed: 0'])
         prot2contig = {}
         for b in tqdm(bins):
@@ -378,8 +379,8 @@ rule hmmer_table :
                 all_pfams_as_ctgs[vv] += [k]
 
         print("open coverage file")
-        covs = pandas.read_csv(input.cov_table, sep="\t")
-        clsts_file = pjoin(os.path.dirname(input.stats), "clusters.txt")
+        covs = pandas.read_csv(cov_table, sep="\t")
+        clsts_file = pjoin(os.path.dirname(stats), "clusters.txt")
 
         if os.path.exists(clsts_file):
             print("fixing name issues between pretty bin names and names of the assembly")
@@ -469,26 +470,23 @@ rule prokka_all:
             flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
     threads : 20 
     run : 
+        
         from pathos.multiprocessing import ProcessingPool as Pool
         bins = [f for f in os.listdir(input.folder) if f.endswith(".fasta")]
         if not os.path.exists(output.folder):
             os.makedirs(output.folder)
 
-        prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --force --prefix {prefix} --locustag {prefix} --cpus {threads} {bins} 2> /dev/null > /dev/null; echo {prefix} done"
+
 
         pool = Pool(threads)
 
         def f(b):
-            meta = "--metagenome" if b == "bin-unbinned.fasta" else ""
-            b_name = b[:-6].replace("_", "-" )
-            prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
-            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
-            call(prok, shell = True)
+            call(b[1], shell = True)
 
-            if os.path.exists(pjoin(output.folder,prefix)):
-                shutil.rmtree(pjoin(output.folder,prefix))
+            if os.path.exists(pjoin(output.folder,b[0])):
+                shutil.rmtree(pjoin(output.folder,b[0]))
 
-            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = prefix), output.folder)
+            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = b[0]), output.folder)
 
 
         prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = bin[:-6].replace("_", "-" ))
@@ -499,9 +497,19 @@ rule prokka_all:
             run_bins.remove("bin-unbinned.fasta")
             run_bins = ["bin-unbinned.fasta"] + run_bins
 
-        print(len(run_bins), " bins to predict with prokka")
+        run_dat = []
+        for b in run_bins:
+            prokka_line = "prokka --outdir {temp_out}/{prefix}  {meta} --prefix {prefix} --locustag {prefix} --cpus {threads} {bins} 2> /dev/null > /dev/null; echo {prefix} done"
+            meta = "--metagenome" if b == "bin-unbinned.fasta" else ""
+            b_name = b[:-6].replace("_", "-" )
+            prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
+            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
+            run_dat += [(prefix, prok)]
+#            print("xx", prok)
 
-        pool.map(f, run_bins)
+        print(len(run_dat), " bins to annotate")
+
+        pool.map(f, run_dat)
         call("touch "  +  output.flag, shell=True)
 
 rule checkm_all :
