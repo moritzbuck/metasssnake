@@ -228,6 +228,9 @@ rule gtdbtk:
             if f.endswith(".fna"):
                 os.remove(pjoin(folder, f))
 
+        shutil.rmtree(pjoin(folder, "temp", "align"))
+        shutil.rmtree(pjoin(folder, "temp", "identify"))
+        
         head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
         arc_data = []
         bac_data = []
