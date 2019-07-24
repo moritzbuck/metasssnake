@@ -5,10 +5,10 @@ import shutil
 
 rule clean_metabat:
     input :
-        clusters = "{path}/binning/metabat/clusters.txt",
-        assembly = "{path}/filtered_assembly.fna",
+        clusters = "{path}/{name}/assemblies/{assembler}/binning/metabat/clusters.txt",
+        assembly = "{path}/{name}/assemblies/{assembler}/filtered_assembly.fna",
     output :
-        unbinned = "{path}/binning/metabat/bins/bin-unbinned.fasta"
+        unbinned = "{path}/{name}/assemblies/{assembler}/binning/metabat/bins/bin-unbinned.fasta"
     run :
         import os
         from Bio import SeqIO
@@ -29,6 +29,7 @@ rule clean_metabat:
         seq_tot = {c : vvs.count(c) for c in tqdm(set(vvs))}
         seq_zeros = {c : len(str(vvs.count(c))) for c in tqdm(set(vvs))}
 #        print(list(clsts.keys())[0:10])
+        print("BUG :::: fix binnames next fresh run!!!!")
         for s in tqdm(SeqIO.parse(input.assembly, "fasta")):
             nam = s.id.split()[0]
             if nam in clsts:
@@ -36,15 +37,14 @@ rule clean_metabat:
                 b_id = str(c).zfill(zero)
                 seq_count[c] += 1
                 pos = str(seq_count[c]).zfill(seq_zeros[c]) + "/" + str(seq_tot[c])
-                s.id = "bin-" + b_id + ":" + pos
+#                s.id = "{name}_{ass}_metabat_bin-".format(name = wildcards.name, ass = wildcards.assembler) + b_id + ":" + pos
+                s.id = "bin-".format(name = wildcards.name, ass = wildcards.assembler) + b_id + ":" + pos
                 s.description = ""
                 seqs[c] += [s]
         if not os.path.exists(out_folder):
             os.makedirs(out_folder)
         for k, v in seqs.items():
             SeqIO.write(v, pjoin(out_folder, "bin-" + str(k).zfill(zero) + ".fasta"), "fasta")
-
-
 
 
 rule metabat :

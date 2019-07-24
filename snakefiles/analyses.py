@@ -68,33 +68,42 @@ rule pre_cluster_proteom:
     params : id = config['analyses']['pre_cluster_proteom']['id'],
              length_cut = config['analyses']['pre_cluster_proteom']['length_cut'],
              temp_folder = config['general']['temp_dir']
-    input : proteom = "4500_assembly_analysis/proteomics/all_proteoms.faa"
-    output : clusters = "4500_assembly_analysis/proteomics/precluster/representative_seq.faa",
-             groups = "4500_assembly_analysis/proteomics/precluster/clusters.tsv"
+    input : proteom = "{path}/proteomics/all_proteoms.faa"
+    output : clusters = "{path}/proteomics/precluster/representative_seq.faa",
+             groups = "{path}/proteomics/precluster/clusters.tsv"
     threads : 16
     run :
-        temp_fasta = pjoin(params.temp_folder, "cdhit_temp.faa")
+        groups = output.groups
+        clusters = output.clusters
+#        temp_fasta = pjoin(params.temp_folder, "cdhit_temp.faa")
+        temp_fasta = pjoin(wildcards.path, "proteomics", "cdhit_temp.faa")
         print("running cd-hit")
-        call("cd-hit -i {input} -o {output} -c {id} -M 0 -T {threads} -d 0 -s {cut}".format(input = input.proteom, output = temp_fasta, id = params.id, cut=params.length_cut, threads= threads), shell=True)
-        clstrs = []
+#        call("cd-hit -i {input} -o {output} -c {id} -M 0 -T {threads} -d 0 -s {cut}".format(input = input.proteom, output = temp_fasta, id = params.id, cut=params.length_cut, threads= threads), shell=True)
+        clstrs = {}
         record = []
         print("parsing clusters")
-
+        
+        counter = 0
         with open(temp_fasta + ".clstr") as handle:
             for l in tqdm(handle):
-                if l.startswith(">") :
-                    clstrs += [record]
-                    record = []
+                if l.startswith(">"):
+                    if record != []:
+                        clstrs[rep]  = (counter,record)
+                        record = []
+                    counter += 1
                 else :
                     dat = l.split()[2]
+                    if l.split()[-1] == "*" : 
+                        rep = dat[1:][:-3]
                     record += [dat[1:][:-3]]
-        clstrs = clstrs[1:]
+        clstrs[rep]  = (counter,record)
 
         print("outputing clusters")
-        with open(output.groups, "w") as outp:
-            outp.writelines(["Cluster_" + str(i+1) + "\t" + "\t".join(rec) + "\n" for i,rec in enumerate(clstrs)])
+        with open(groups, "w") as outp:
+            outp.writelines(["Cluster_" + str(rec[1][0]) + "\t" + "\t".join(rec[1][1]) + "\n" for i,rec in enumerate(clstrs.items())])
         print("outputing fasta")
-        with open(output.clusters, "w") as outp :
+        
+        with open(clusters, "w") as outp :
             counter = 0
             with open(temp_fasta) as handle:
                 for l in tqdm(handle):
@@ -102,14 +111,14 @@ rule pre_cluster_proteom:
                         if counter > 0 :
                             outp.writelines(record)
                         counter += 1
-                        record = [ ">Cluster_" + str(counter) + "\n"]
+                        record = [ ">Cluster_" + str(clstrs[l.split()[0][1:]][0]) + "\n"]
                     else :
                         record += [l]
 
 
 rule self_diamond :
-    input : clusters = "4500_assembly_analysis/proteomics/precluster/representative_seq.faa",
-    output : hits =  "4500_assembly_analysis/proteomics/precluster/selfhits.diamond"
+    input : clusters = "{path}/proteomics/precluster/representative_seq.faa",
+    output : hits =  "{path}/proteomics/precluster/selfhits.diamond"
     threads : 20
     shell :"""
 diamond makedb --db {input.clusters} --in {input.clusters}
@@ -117,12 +126,12 @@ diamond blastp --more-sensitive -p {threads} -f 6 -q {input.clusters} --db {inpu
 """
 
 rule silix :
-    input : hits =  "4500_assembly_analysis/proteomics/precluster/selfhits.diamond",
-            clusters = "4500_assembly_analysis/proteomics/precluster/representative_seq.faa",
-            groups = "4500_assembly_analysis/proteomics/precluster/clusters.tsv"
-    output : raw_clusters = "4500_assembly_analysis/proteomics/silix_clusters/clusters.tsv",
-             clusters = "4500_assembly_analysis/proteomics/cogs.tsv",
-#             net =  "4500_assembly_analysis/proteomics/precluster/selfhits.net",
+    input : hits =  "{path}/proteomics/precluster/selfhits.diamond",
+            clusters = "{path}/proteomics/precluster/representative_seq.faa",
+            groups = "{path}/proteomics/precluster/clusters.tsv"
+    output : raw_clusters = "{path}/proteomics/silix_clusters/clusters.tsv",
+             clusters = "{path}/proteomics/cogs.tsv",
+#             net =  "{path}/proteomics/precluster/selfhits.net",
     threads : 1
     run :
         from tqdm import tqdm
@@ -147,8 +156,8 @@ rule silix :
             handle.writelines(["COG_" + k + "\t" + "\t".join(v) + "\n" for k, v in cogs.items()])
 
 rule mags2cogs:
-    input : clusters = "4500_assembly_analysis/proteomics/cogs.tsv",
-    output : mag2cogs = "4500_assembly_analysis/mags/mag2cogs.tsv",
+    input : clusters = "{path}/proteomics/cogs.tsv",
+    output : mag2cogs = "{path}/mags/mag2cogs.tsv",
     threads : 1
     run :
         with open(input.clusters) as handle:
@@ -164,8 +173,8 @@ rule mags2cogs:
             handle.writelines([k + "\t" + "\t".join([vv for vv in v]) + "\n" for k,v in mags2cogs.items() ])
 
 rule magNet:
-    input : mags2cogs = "4500_assembly_analysis/mags/mag2cogs.tsv",
-    output : pairs = "4500_assembly_analysis/mags/mag_pairs.csv",
+    input : mags2cogs = "{path}/mags/mag2cogs.tsv",
+    output : pairs = "{path}/mags/mag_pairs.csv",
     threads : 5
     run :
         with open(input.mags2cogs) as handle:
@@ -252,9 +261,9 @@ rule magNet:
 
 rule fastANI_dists:
     params : block_size = 1000
-    input : taxonomy = "4500_assembly_analysis/full_taxonomy.tax",
-    output : pairs = "4500_assembly_analysis/mags/fastani_pairs.csv",
-             paired = "4500_assembly_analysis/mags/.paired"
+    input : taxonomy = "{path}/magstats.csv", #"{path}/full_taxonomy.tax",
+    output : pairs = "{path}/mags/fastani_pairs.csv",
+             paired = "{path}/mags/.paired"
     threads : 20
     run :
         import tempfile
@@ -290,9 +299,9 @@ rule fastANI_dists:
 
 rule fastaANI_genome_clsts:
     params : ani_cutoff = 95
-    input : taxonomy = "4500_assembly_analysis/full_taxonomy.tax",
-            pairs = "4500_assembly_analysis/mags/fastani_pairs.csv",
-            magstats = "4500_assembly_analysis/magstats",
+    input : taxonomy = "{path}/full_taxonomy.tax",
+            pairs = "{path}/mags/fastani_pairs.csv",
+            magstats = "{path}/magstats",
     output :
     threads : 20
     run :
@@ -308,9 +317,9 @@ rule fastaANI_genome_clsts:
         genome_clusters = [[rev_vertexDeict[cc] for cc in c ] for c in species_graph.components(mode=igraph.WEAK)]
 
 rule make_cogs:
-    input : cogs = "4500_assembly_analysis/proteomics/cogs.tsv",
-            proteom = "4500_assembly_analysis/proteomics/all_proteoms.faa",
-    output :  cogs = "4500_assembly_analysis/cogs/cogs_metadata.tsv"
+    input : cogs = "{path}/proteomics/cogs.tsv",
+            proteom = "{path}/proteomics/all_proteoms.faa",
+    output :  cogs = "{path}/cogs/cogs_metadata.tsv"
     threads : 1
     run :
             import pandas

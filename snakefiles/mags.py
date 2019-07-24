@@ -266,7 +266,7 @@ def cov_table(wildcards):
     if "1500_" in wildcards.path or "1000_" in wildcards.path:
         return realpath(pjoin(wildcards.path,"../../filtered_assembly/mapping/map_table.tsv"))
     else :
-        return pjoin(wildcards.path, "FullAssembly/mapping/map_table.tsv")
+        return pjoin(wildcards.path, "genomics/all_genomes/mapping/map_table.tsv")
 
 rule tax_table:
     input : cov_table = cov_table,
@@ -504,8 +504,7 @@ rule prokka_all:
     input :  unbinned = "{path}/{set}/assemblies/{assembler}/binning/{binner}/bins/bin-unbinned.fasta"
     output : flag = "{path}/{set}/assemblies/{assembler}/binning/{binner}/.all_annotated"
     threads : 20 
-    run : 
-        
+    run :         
         from pathos.multiprocessing import ProcessingPool as Pool
         in_folder = os.path.dirname(input.unbinned) 
         bins = [f for f in os.listdir(in_folder) if f.endswith(".fasta")]
@@ -521,10 +520,10 @@ rule prokka_all:
         def f(b):
             call(b[1], shell = True)
 
-            if os.path.exists(pjoin(output.folder,b[0])):
-                shutil.rmtree(pjoin(output.folder,b[0]))
+            if os.path.exists(pjoin(folder,b[0])):
+                shutil.rmtree(pjoin(folder,b[0]))
 
-            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = b[0]), output.folder)
+            shutil.move("{temp_out}/{prefix}".format(temp_out = config['general']['temp_dir'], prefix = b[0]), folder)
 
         prefix = lambda bin : "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = bin[:-6].replace("_", "-" ))
 
@@ -540,7 +539,7 @@ rule prokka_all:
             meta = "--metagenome" if b == "bin-unbinned.fasta" else ""
             b_name = b[:-6].replace("_", "-" )
             prefix = "{set}_{assembler}_{binner}_{bin}".format(**wildcards, bin = b_name)
-            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(input.folder, b) )
+            prok = prokka_line.format(temp_out = config['general']['temp_dir'], meta = meta, prefix = prefix, threads = 1, bins = pjoin(in_folder, b) )
             run_dat += [(prefix, prok)]
 #            print("xx", prok)
 

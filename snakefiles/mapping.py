@@ -51,7 +51,7 @@ rule bbmap_index:
     threads : 20
     run :
        # DEBUG add a test to see if crashed due to lack of memory or not!
-       call("bbmap.sh ref={ref} path={folder} threads={threads}".format(ref = input.ref, folder = output.folder, threads = threads), shell = True)
+       call("bbmap.sh k=11 usemodulo=t ref={ref} path={folder} threads={threads}".format(ref = input.ref, folder = output.folder, threads = threads), shell = True)
        call("touch " + output.flag, shell = True)
 
 rule sample_wise_bbmap :
@@ -62,9 +62,9 @@ rule sample_wise_bbmap :
     output : wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
              stats = "{path}/mapping/bams/{sample}.stats",
              bam = "{path}/mapping/bams/{sample}.bam"
-    threads :  10
+    threads :  20
     run : 
-        bb_string = "bbmap.sh -Xmx55g in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
+        bb_string = "bbmap.sh k=11 usemodulo=t -eoom -Xmx120g in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
         bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
         ### DEBUG add test for memory loss crash
