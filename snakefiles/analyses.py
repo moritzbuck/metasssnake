@@ -3,11 +3,51 @@ from subprocess import Popen, PIPE, call
 import os
 from tqdm import tqdm
 
+rule phigaro :
+   params : prop = 0.25
+   input : genome = "{path}/genomics/all_genomes.fna",
+           taxonomy = "{path}/full_taxonomy.tax",
+           magstats = "{path}/magstats.csv",
+   output : tax_file = "{path}/full_taxonomy_w_virus.tax",
+            phigaro_file = "{path}/genomics/phigaro.txt"
+   threads : 20
+   run : 
+      metagenome = input.genome
+      ori_tax = input.taxonomy
+      new_tax = output.tax_file
+      magstats_file = input.magstats
+      outfile = output.phigaro_file
+      prop = params.prop
+
+#      call("phigaro -f {genome} -t 20 -o {ouput}".format(genome = metagenome, output = outfile) , shell = True  )
+      call("cp 2000_MAG_sets/Loclat/genomics/phigaro.txt.bk 2000_MAG_sets/Loclat/genomics/phigaro.txt", shell = True)
+      with open(outfile) as handle:
+          phi = [(l.split()[0][1:].split(":")[0], float(l.split()[2])-float(l.split()[1])+1) for l in handle if not l.endswith("end\n")]
+      mag2phicov = {p[0] : 0  for p in phi} 
+      for p in phi:
+          mag2phicov[p[0]] += p[1]
+
+      magstats = pandas.read_csv(magstats_file, index_col=0)
+      magstats['vir_fract'] = [mag2phicov.get(k,0) for k in magstats.index]
+      magstats.to_csv(magstats_file)
+      viruses = magstats.loc[magstats.vir_fract > magstats.length*prop].index
+      with open(ori_tax) as handle:
+          tax = {l.split(",")[0] : l[:-1].split(",")[1:] for l in handle}
+      
+      for k in viruses : 
+          tax[k] = ['Virus']
+      
+      del tax['identifiers']
+      head_line = "identifiers,superkingdom,phylum,class,order,family,genus,species,strain\n"
+      with open(new_tax, "w" ) as handle:
+          handle.writelines([head_line] + [",".join([k] + v) + "\n" for k,v in tax.items()])
+
+
 
 rule merge:
    params : completness = config['analyses']['merge']['completness'],
             contamination = config['analyses']['merge']['contamination']
-   input: expand("/crex/proj/uppstore2018116/moritz6/1000_processed_reads/{name}/assemblies/megahit/binning/metabat/full_taxonomy.tax", name = samples), expand("/crex/proj/uppstore2018116/moritz6/1500_coasses/{name}/assemblies/megahit/binning/metabat/full_taxonomy.tax", name = coasses)
+   input: expand("1000_processed_reads/{name}/assemblies/megahit/binning/metabat/full_taxonomy.tax", name = samples), expand("1500_coasses/{name}/assemblies/megahit/binning/metabat/full_taxonomy.tax", name = coasses)
    output : magstats = "4500_assembly_analysis/magstats.csv",
             taxonomy = "4500_assembly_analysis/full_taxonomy.tax",
             good_mags = "4500_assembly_analysis/good_mags.txt",
@@ -27,8 +67,8 @@ rule merge:
        cont = params.contamination
        mag_stats = [f.replace("full_taxonomy.tax","magstats.csv") for f in tax_files]
 
-       genome_fold = pjoin(os.path.dirname(output.magstats), "genomics")
-       proteoms_fold = pjoin(os.path.dirname(output.magstats), "proteomics")
+       genome_fold = pjoin(os.getcwd(), os.path.dirname(output.magstats), "genomics")
+       proteoms_fold = pjoin(os.getcwd(), os.path.dirname(output.magstats), "proteomics")
 
        print("merge magstats")
        levels = ['superkingdom','phylum','class','order','family','genus', "species", "strain"]
@@ -48,12 +88,12 @@ rule merge:
        os.makedirs(pjoin(proteoms_fold, "CDSs"), exist_ok = True)
 
        for f in tqdm(mag_stats):
-           fold = os.path.dirname(f)
+           fold = pjoin(os.getcwd(), os.path.dirname(f))
            mag_list = os.listdir(pjoin(fold, "clean_bins"))
            for b in tqdm(mag_list):
-#                os.symlink(pjoin(fold, "clean_bins", b, b + ".fna"), pjoin(genome_fold, "genomes", b + ".fna"))
-#                os.symlink(pjoin(fold, "clean_bins", b, b + ".gff"), pjoin(proteoms_fold, "gffs", b + ".gff"))
-#                os.symlink(pjoin(fold, "clean_bins", b, b + ".ffn"), pjoin(proteoms_fold, "CDSs", b + ".ffn"))
+                os.symlink(pjoin(fold, "clean_bins", b, b + ".fna"), pjoin(genome_fold, "genomes", b + ".fna"))
+                os.symlink(pjoin(fold, "clean_bins", b, b + ".gff"), pjoin(proteoms_fold, "gffs", b + ".gff"))
+                os.symlink(pjoin(fold, "clean_bins", b, b + ".ffn"), pjoin(proteoms_fold, "CDSs", b + ".ffn"))
                 os.symlink(pjoin(fold, "clean_bins", b, b + ".faa"), pjoin(proteoms_fold, "proteoms", b + ".faa"))
        cat_line = "find {fold} -type l -exec cat {{}} \; > {file}"
 
@@ -75,10 +115,10 @@ rule pre_cluster_proteom:
     run :
         groups = output.groups
         clusters = output.clusters
-#        temp_fasta = pjoin(params.temp_folder, "cdhit_temp.faa")
-        temp_fasta = pjoin(wildcards.path, "proteomics", "cdhit_temp.faa")
+        temp_fasta = pjoin(params.temp_folder, "cdhit_temp.faa")
+#        temp_fasta = pjoin(wildcards.path, "proteomics", "cdhit_temp.faa")
         print("running cd-hit")
-#        call("cd-hit -i {input} -o {output} -c {id} -M 0 -T {threads} -d 0 -s {cut}".format(input = input.proteom, output = temp_fasta, id = params.id, cut=params.length_cut, threads= threads), shell=True)
+        call("cd-hit -i {input} -o {output} -c {id} -M 0 -T {threads} -d 0 -s {cut}".format(input = input.proteom, output = temp_fasta, id = params.id, cut=params.length_cut, threads= threads), shell=True)
         clstrs = {}
         record = []
         print("parsing clusters")
@@ -122,7 +162,7 @@ rule self_diamond :
     threads : 20
     shell :"""
 diamond makedb --db {input.clusters} --in {input.clusters}
-diamond blastp --more-sensitive -p {threads} -f 6 -q {input.clusters} --db {input.clusters} -o {output.hits}
+diamond blastp --more-sensitive  -e0.001  -p {threads} -f 6 -q {input.clusters} --db {input.clusters} -o {output.hits}
 """
 
 rule silix :
@@ -200,6 +240,105 @@ rule magNet:
                 o = []
         handle.close()
 
+rule ani_otus:
+    params : simil = 95, 
+    input : pairs = "{path}/mags/fastani_pairs.csv",
+            magstats = "{path}/magstats.csv",
+    output : otus = "{path}/mags/ani_otus.csv"
+    threads : 5
+    run :
+        import igraph
+        from numpy import  logical_and,logical_or
+        import pandas
+
+        pairs = input.pairs
+        otus = output.otus
+        simil = params.simil
+        magstats = pandas.read_csv(input.magstats, index_col=0)
+        decents = magstats.index[logical_and( magstats.completeness > 40, magstats.contamination <5)]
+        subs = set(magstats.index ).difference(decents)
+        with open(pairs) as handle:
+            mag_sim = {tuple(l.split()[0:2]) : float(l[:-1].split()[2]) for l in tqdm(handle) if l[0] != "q"}
+
+        def make_ani_otus(sim_dict, simil) : 
+            valid_pair = lambda k : mag_sim.get((k[1],k[0])) and mag_sim[k] > simil and mag_sim[(k[1],k[0])] > simil
+            good_pairs = [k for k in tqdm(sim_dict) if valid_pair(k)]
+            species_graph = igraph.Graph()
+            vertexDeict = { v : i for i,v in enumerate(set([x for k in good_pairs for x in k]))}
+            rev_vertexDeict = { v : i for i,v in vertexDeict.items()}
+            species_graph.add_vertices(len(vertexDeict))
+            species_graph.add_edges([(vertexDeict[k[0]], vertexDeict[k[1]]) for k in good_pairs if k[0] != k[1] ])
+            genome_clusters = [[rev_vertexDeict[cc] for cc in c ] for c in species_graph.components(mode=igraph.STRONG)]
+            return genome_clusters
+
+        genome_clusters = make_ani_otus(mag_sim, simil)
+
+        left_pairs = {k : v for k, v in mag_sim.items() if k[0] not in decents and k[1] in decents and v > 95}
+        subs = {l[0] : (None,0) for l in left_pairs}
+        for p,ani in tqdm(left_pairs.items()):
+            if subs[p[0]][1] < ani:
+                subs[p[0]] = (p[1], ani)
+
+        for k, v in subs.items():   
+            for g in genome_clusters:
+                if v[0] in g :
+                    g += [k]
+        
+        with open(otus, "w") as handle:
+            handle.writelines([ "aniOTU_{id}\t".format(id = i) + ";".join(gs) + "\n" for i, gs in enumerate(genome_clusters)])
+
+rule functional_otus:
+    params : simil = 0.70, cog_count = 10
+    input : pairs = "{path}/mags/mag_pairs.csv",
+            mags2cogs = "{path}/mags/mag2cogs.tsv",
+    output : otus = "{path}/mags/functional_otus.csv"
+    threads : 5
+    run :
+        import igraph
+        pairs = input.pairs
+        otus = output.otus
+        simil = params.simil
+        cog_count = params.cog_count
+        mags2cogs_file = input.mags2cogs
+
+        with open(mags2cogs_file) as handle:
+            mags2cogs = {r.split()[0] : set(r.split()[1:]) for r in handle.readlines()}
+
+        with open(pairs) as handle:
+            mag_sim = {tuple(l.split()[0:2]) : float(l[:-1].split()[-1]) for l in tqdm(handle) if l[0] != "q" if float(l[:-1].split()[-1]) > simil}
+
+        def make_funct_otus(sim_dict, simil, cog_count ) : 
+            valid_pair = lambda k : mag_sim.get((k[1],k[0])) and len(mags2cogs[k[0]]) > cog_count and len(mags2cogs[k[1]]) > cog_count 
+            good_pairs = [k for k in tqdm(sim_dict) if valid_pair(k)]
+            species_graph = igraph.Graph()
+            vertexDeict = { v : i for i,v in enumerate(set([x for k in good_pairs for x in k]))}
+            rev_vertexDeict = { v : i for i,v in vertexDeict.items()}
+            species_graph.add_vertices(len(vertexDeict))
+            species_graph.add_edges([(vertexDeict[k[0]], vertexDeict[k[1]]) for k in good_pairs if k[0] != k[1] ])
+            genome_clusters = [[rev_vertexDeict[cc] for cc in c ] for c in species_graph.components(mode=igraph.STRONG)]
+            return genome_clusters
+
+        genome_clusters = make_funct_otus(mag_sim, simil, cog_count )
+        mag2otu = {vv : i for i,v in enumerate(genome_clusters) for vv in v}
+        
+        genome_clusters = [['fMAG:' + gg for gg in g] for g in genome_clusters]
+        left_pairs = {k : v for k, v in mag_sim.items() if k[0] not in mag2otu}
+
+        subs = {l[0] : (None,0) for l in left_pairs}
+        for p,ani in tqdm(left_pairs.items()):
+            if subs[p[0]][1] < ani and p[1] in mag2otu:
+                subs[p[0]] = (p[1], ani)
+
+        for k, v in subs.items():   
+            if v[1]:
+                genome_clusters[mag2otu[v[0]]] += ['fSUB:' + k]
+
+
+        
+        with open(otus, "w") as handle:
+            handle.writelines([ "cogOTU_{id}\t".format(id = i) + ";".join(gs) + "\n" for i, gs in enumerate(genome_clusters)])
+
+
 
 
 #        mean = lambda l1,l2 : (l1+l2)/2
@@ -260,8 +399,8 @@ rule magNet:
         # pandas.DataFrame.from_dict(name_based_stats, orient="index").to_csv("non_taxed_stats.csv")
 
 rule fastANI_dists:
-    params : block_size = 1000
-    input : taxonomy = "{path}/magstats.csv", #"{path}/full_taxonomy.tax",
+    params : block_size = 1070
+    input : taxonomy = "{path}/full_taxonomy.tax",
     output : pairs = "{path}/mags/fastani_pairs.csv",
              paired = "{path}/mags/.paired"
     threads : 20
@@ -277,6 +416,7 @@ rule fastANI_dists:
 
         for i,bloc1 in enumerate(mag_blocks):
             b1_tfile = tempfile.NamedTemporaryFile().name
+
             with open(b1_tfile, "w") as handle:
                 handle.writelines([pjoin(genome_fold,l + ".fna") +"\n" for l in bloc1])
             for j,bloc2 in enumerate(mag_blocks):
@@ -286,7 +426,7 @@ rule fastANI_dists:
                         handle.writelines([pjoin(genome_fold,l + ".fna")  +"\n" for l in bloc2])
 
                     out_tfile = tempfile.NamedTemporaryFile().name
-                    call("fastANI --ql {b1} --rl {b2} -o {out} -t {threads} 2> /dev/null".format(b1 = b1_tfile, b2 = b2_tfile, out = out_tfile, threads = threads), shell = True)
+                    call("fastANI --ql {b1} --rl {b2} -o {out} -t {threads} #2> /dev/null".format(b1 = b1_tfile, b2 = b2_tfile, out = out_tfile, threads = threads), shell = True)
                     with open(out_tfile) as handle:
                         new_dat = ["\t".join([ll.split("/")[-1].replace(".fna","") for ll in l.split()]) +"\n" for l in handle.readlines()]
                     with open(output.pairs, "a") as handle:
