@@ -1,3 +1,4 @@
+
 from subprocess import call
 from os.path import join as pjoin
 import os
@@ -89,20 +90,30 @@ rule mash:
     shell :
         "mash sketch -r -p {threads} -k {params.kmer} -s {params.hashes} -o $(echo '{output}' | sed -e 's/.msh//') {input} > {log}"
 
-rule kaiju:
+rule kaiju: 
     params : db_path = config["read_processing"]['kaiju']['db_path'],
-             db = config["read_processing"]['kaiju']['db'],
-    input : "1000_processed_reads/{sample}/reads/trimmomatic/{sample}_1P.fastq.gz","1000_processed_reads/{sample}/reads/trimmomatic/{sample}_2P.fastq.gz"
-    output : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.out.summary", "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.html"
-    log : "1000_processed_reads/{sample}/reads/kaiju/{sample}_kaiju.log"
+    input : fwd = "1000_processed_reads/{sample}/reads/fwd.fastq.gz",  rev = "1000_processed_reads/{sample}/reads/rev.fastq.gz",
+    output : "1000_processed_reads/{sample}/reads/kaiju/{db}/{sample}.kaiju"
+    log : "1000_processed_reads/{sample}/reads/kaiju/{db}/kaiju.log"
+    threads : 20
     shell : """
-    module load bioinfo-tools
-    module load Krona
-    kaiju -t {params.db_path}/nodes.dmp -f {params.db_path}/{params.db}   -i 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/{wildcards.sample}_1P.fastq.gz -j 1000_processed_reads/{wildcards.sample}/reads/trimmomatic/{wildcards.sample}_2P.fastq.gz -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -z {threads} > {log}
-    kaiju2krona -u -t {params.db_path}/nodes.dmp -n {params.db_path}/names.dmp -i 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.krona >> {log}
-    ktImportText  -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.html 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.krona >> {log}
-    kaijuReport -p -r genus -t {params.db_path}/nodes.dmp -n {params.db_path}/names.dmp -i 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out -r family -o 1000_processed_reads/{wildcards.sample}/reads/kaiju/{wildcards.sample}_kaiju.out.summary >> {log}
+    kaiju -t {params.db_path}/{wildcards.db}/nodes.dmp -f {params.db_path}/{wildcards.db}/*.fmi   -i {input.fwd} -j {input.rev} -o {output} -z {threads} > {log}
     """
+
+rule full_kaiju_by_level:
+    params : db_path = config["read_processing"]['kaiju']['db_path'],
+    input : expand("1000_processed_reads/{sample}/reads/kaiju/{{db}}/{sample}.kaiju", sample = samples)
+    output : "4000_library_analysis/kaiju/{db}/tables/{level}.tsv"
+    shell : """
+kaiju2table -p -t {params.db_path}/{wildcards.db}/nodes.dmp -n {params.db_path}/{wildcards.db}/names.dmp -r {wildcards.level} -o {output} {input} 
+"""
+
+rule all_kaijus:
+    input : expand("4000_library_analysis/kaiju/{db}/tables/{level}.tsv", db = ['nr_euk_mycocosm'], level = ['phylum', 'class', 'order', 'family', 'genus', 'species'])
+    output : "4000_library_analysis/kaiju/kaiju.ed"
+    shell: """
+touch {output}
+"""
 #
 # rule matam:
 #     params : db_path = config["read_processing"]['matam']['db_path'],
@@ -199,3 +210,20 @@ rule kaiju:
 #     input : all_dones ,
 #     output : "1000_processed_reads/done"
 #     shell : "touch 1000_processed_reads/done"
+
+
+rule bbnorm:
+    input : read1 = "{path}/fwd.fastq.gz",
+             read2 = "{path}/rev.fastq.gz",
+    output : read1 = "{path}/fwd.bbnorm.fastq.gz",
+             read2 = "{path}/rev.bbnorm.fastq.gz",
+             unp = "{path}/unp.bbnorm.fastq.gz",
+             hist = "{path}/bbnorm.hist"
+    params : minprob = config["read_processing"]["bbnorm"]["minprob"],
+             target = config["read_processing"]["bbnorm"]["target"]
+    threads : 20
+    shell : """
+bbnorm.sh in={input.read1} in2={input.read2} out={output.read1} out2={output.read2} threads={threads}  hist={output.hist} prefilter=t minprob={params.minprob} target={params.target}
+
+touch {output.unp}
+    """
