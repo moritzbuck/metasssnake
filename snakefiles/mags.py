@@ -287,7 +287,15 @@ rule tax_table:
         bin_wise = output.bin_wise
         out_folder = output.folder
 
-        covs = pandas.read_csv(cov_table, sep="\t", index_col = 0)
+        with open(cov_table) as handle:
+            columns = handle.readline()[:-1].split()
+            covs = {l.split()[0] : l[:-1].split()[1:] for l in tqdm(handle)}
+            covs = {l.split()[0] : {c : float(v) for c,v in zip(columns,l[:-1].split()[1:]) if not c.endswith(".bam-var")} for l in tqdm(handle)}
+
+        covs = pandas.DataFrame.from_dict(covs, orient ="index")
+#        covs = pandas.read_csv(cov_table, sep="\t", index_col = 0)
+
+
         stats_sheet = pandas.read_csv(stats)
         bins =  list(stats_sheet['Unnamed: 0'])
 

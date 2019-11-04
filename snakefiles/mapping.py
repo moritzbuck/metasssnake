@@ -48,7 +48,7 @@ rule bbmap_index:
              folder = "{path}/{fasta}/mapping",
              gz = "{path}/{fasta}/mapping/ref/genome/1/chr1.chrom.gz",
              flag = "{path}/{fasta}/mapping/ref.ed"
-    threads : 16
+    threads : 20
     run :
        # DEBUG add a test to see if crashed due to lack of memory or not!
        call("bbmap.sh k=11 usemodulo=t ref={ref} path={folder} threads={threads}".format(ref = input.ref, folder = output.folder, threads = threads), shell = True)
@@ -62,9 +62,9 @@ rule sample_wise_bbmap :
     output : wdups_stats = "{path}/mapping/bams/{sample}_sorted.stats",
              stats = "{path}/mapping/bams/{sample}.stats",
              bam = "{path}/mapping/bams/{sample}.bam"
-    threads :  16
+    threads :  20
     run : 
-        bb_string = "bbmap.sh k=11 usemodulo=t -eoom -Xmx500g in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref} reads=1000000"
+        bb_string = "bbmap.sh k=11 usemodulo=t -eoom -Xmx120g in={fwd} in2={rev} threads={threads} out={out} bamscript={bams} path={ref}"
         temp_bam = pjoin(config['general']['temp_dir'], wildcards.sample + ".sam")
         bamsc = pjoin(config['general']['temp_dir'], "bamscr.sh")
         ### DEBUG add test for memory loss crash

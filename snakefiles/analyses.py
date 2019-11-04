@@ -159,7 +159,7 @@ rule pre_cluster_proteom:
 rule self_diamond :
     input : clusters = "{path}/proteomics/precluster/representative_seq.faa",
     output : hits =  "{path}/proteomics/precluster/selfhits.diamond"
-    threads : 20
+    threads : 16
     shell :"""
 diamond makedb --db {input.clusters} --in {input.clusters}
 diamond blastp --more-sensitive  -e0.001  -p {threads} -f 6 -q {input.clusters} --db {input.clusters} -o {output.hits}
@@ -286,6 +286,45 @@ rule ani_otus:
         
         with open(otus, "w") as handle:
             handle.writelines([ "aniOTU_{id}\t".format(id = i) + ";".join(gs) + "\n" for i, gs in enumerate(genome_clusters)])
+
+
+rule ani_otus2:
+    params : simil = 95, 
+    input : pairs = "{path}/mags/fastani_pairs.csv",
+            magstats = "{path}/magstats.csv",
+    output : otus = "{path}/mags/ani_otus_{simil}_{comps}.csv"
+    threads : 5
+    run :
+        import igraph
+        from numpy import  logical_and,logical_or
+        import pandas
+
+        pairs = input.pairs
+        otus = output.otus
+        simil = float(wildcards.simil)
+        comps = float(wildcards.comps)
+        magstats = pandas.read_csv(input.magstats, index_col=0)
+        decents = magstats.index[logical_and( magstats.completeness > comps, magstats.contamination <5)]
+
+        with open(pairs) as handle:
+            mag_sim = {tuple(l.split()[0:2]) : float(l[:-1].split()[2]) for l in tqdm(handle) if l[0] != "q"}
+
+        def make_ani_otus(sim_dict, simil) : 
+            valid_pair = lambda k : mag_sim.get((k[1],k[0])) and mag_sim[k] > simil and mag_sim[(k[1],k[0])] > simil and k[0] in decents and k[1] in decents
+            good_pairs = [k for k in tqdm(sim_dict) if valid_pair(k)]
+            species_graph = igraph.Graph()
+            vertexDeict = { v : i for i,v in enumerate(set([x for k in good_pairs for x in k]))}
+            rev_vertexDeict = { v : i for i,v in vertexDeict.items()}
+            species_graph.add_vertices(len(vertexDeict))
+            species_graph.add_edges([(vertexDeict[k[0]], vertexDeict[k[1]]) for k in good_pairs if k[0] != k[1] ])
+            genome_clusters = [[rev_vertexDeict[cc] for cc in c ] for c in species_graph.components(mode=igraph.STRONG)]
+            return genome_clusters
+
+        genome_clusters = make_ani_otus(mag_sim, simil)        
+        with open(otus, "w") as handle:
+            handle.writelines([ "aniOTU_{id}\t".format(id = i) + ";".join(gs) + "\n" for i, gs in enumerate(genome_clusters)])
+
+
 
 rule functional_otus:
     params : simil = 0.70, cog_count = 10
