@@ -49,7 +49,7 @@ snakemake -j 999 --cluster-config 8000_scripts/cluster.json --cluster "$QSCRIPT"
 print("#loading The Rule")
 
 rule all : 
-    input : expand("/crex/proj/uppstore2018116/moritz6/1000_processed_reads/{name}/assemblies/{assembler}/binning/metabat/full_taxonomy.tax", name = samples, assembler = ["megahit"]), expand("/crex/proj/uppstore2018116/moritz6/1500_coasses/{name}/assemblies/{assembler}/binning/metabat/abundance_tables/abundance_per_bin.csv", name = coasses, assembler = ["megahit"])
+    input : expand("/crex/proj/uppstore2018116/moritz6/1000_processed_reads/{name}/assemblies/{assembler}/binning/metabat/full_taxonomy.tax", name = samples, assembler = ["megahit"])#, expand("/crex/proj/uppstore2018116/moritz6/1500_coasses/{name}/assemblies/{assembler}/binning/metabat/abundance_tables/abundance_per_bin.csv", name = coasses, assembler = ["megahit"])
 
 
 

@@ -307,7 +307,7 @@ rule ani_otus2:
         decents = magstats.index[logical_and( magstats.completeness > comps, magstats.contamination <5)]
 
         with open(pairs) as handle:
-            mag_sim = {tuple(l.split()[0:2]) : float(l[:-1].split()[2]) for l in tqdm(handle) if l[0] != "q"}
+            mag_sim = {tuple(l.split()[0:2]) : float(l[:-1].split()[2]) for l in tqdm(handle) if not l.startswith("query\t")}
 
         def make_ani_otus(sim_dict, simil) : 
             valid_pair = lambda k : mag_sim.get((k[1],k[0])) and mag_sim[k] > simil and mag_sim[(k[1],k[0])] > simil and k[0] in decents and k[1] in decents
