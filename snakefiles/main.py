@@ -14,7 +14,7 @@ config['general']['temp_dir'] = os.environ['SNIC_TMP']
 
 print("#loading samples")
 
-samples = list(set(glob_wildcards("0000_raws/0100_reads/genomic2/{sample}_{lib}_R{dir}.fastq.gz").sample ))
+samples = list(set(glob_wildcards("0000_raws/{sample}_{lib}_R{dir}.fastq.gz").sample ))
 print("#We have ", len(samples), "samples")
 
 coasses = glob_wildcards("9000_metadata/9100_samplesets/{coass}.txt").coass
@@ -49,10 +49,6 @@ snakemake -j 999 --cluster-config 8000_scripts/cluster.json --cluster "$QSCRIPT"
 print("#loading The Rule")
 
 rule all : 
-    input : expand("/crex/proj/uppstore2018116/moritz6/1000_processed_reads/{name}/assemblies/{assembler}/binning/metabat/full_taxonomy.tax", name = samples, assembler = ["megahit"])#, expand("/crex/proj/uppstore2018116/moritz6/1500_coasses/{name}/assemblies/{assembler}/binning/metabat/abundance_tables/abundance_per_bin.csv", name = coasses, assembler = ["megahit"])
-
-
-
-#)
+    input : expand("/crex/proj/uppstore2018116/moritz6/1000_processed_reads/{name}/assemblies/{assembler}/binning/metabat/full_taxonomy.tax", name = samples, assembler = ["megahit"]), expand("1500_coasses/{name}/assemblies/{assembler}/binning/metabat/abundance_tables/abundance_per_bin.csv", name = coasses, assembler = ["megahit"])
 
 
