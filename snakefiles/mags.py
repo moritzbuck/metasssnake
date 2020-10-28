@@ -40,8 +40,8 @@ def mag_stat(folder, bin_head) :
     out_dict['length'] = sum([len(s.seq) for s in fna])
     out_dict['nb_contigs'] = len(fna)
     out_dict['nb_proteins'] = len(faa)
-    out_dict['coding_density'] = (3.0*sum([len(s.seq) for s in faa]))/sum([len(s.seq) for s in fna])
-    out_dict['GC'] = float(sum([str(s.seq).count("G")+str(s.seq).count("C") for s in fna]))/out_dict['length']
+    out_dict['coding_density'] = (3.0*sum([len(s.seq) for s in faa]))/sum([len(s.seq) for s in fna]) if out_dict['length']  >0 else None
+    out_dict['GC'] = float(sum([str(s.seq).count("G")+str(s.seq).count("C") for s in fna]))/out_dict['length'] if out_dict['length']  >0 else None
     return out_dict
 
 rule phylophlan :

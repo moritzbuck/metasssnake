@@ -9,8 +9,7 @@
     "exp_json" : "/home/moritz/proj_folder/uppstore2018126/moritz/0028_pepparkakor/8000_scripts/exp_sets.json" 
   },
   "assembling" : {
-    "filter_cutoff" : 1500,
-    "coas_files_dir" : "/crex/proj/uppstore2018116/moritz6/0000_raws/0200_coasses/"
+    "filter_cutoff" : 1500
   },
   "binning" : {
     "metabat" : {
